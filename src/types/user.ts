@@ -1,0 +1,18 @@
+import { Role } from './rbac';
+
+export interface UserRecord {
+  id: string;
+  username: string;
+  displayName: string;
+  shortName: string | null;
+  email: string;
+  phone: string;
+  address: string | null;
+  joinedAt: string;
+  workShift: string | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  roles: Role[];
+}
