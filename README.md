@@ -23,6 +23,13 @@ Frontend Next.js App Router cho nền tảng quản trị doanh nghiệp đa ten
 - Việc cần xử lý và hàng đợi chữ ký số độc lập nhà cung cấp.
 - Trang 403 giữ nguyên phiên đăng nhập, không tự logout khi thiếu quyền.
 
+### Giai đoạn 2 (CMMS)
+- **Quản lý Thiết bị (Equipment):** Cấu trúc cây (Parent - Child).
+- **Vật tư & Kho (Inventory):** Danh mục, Tồn kho hiện hành, và modal giao dịch Nhập/Xuất kho.
+- **Phiếu công việc (Work Orders):** Xử lý sự cố, gán thiết bị, theo dõi thời gian dừng máy.
+- **Bảo trì định kỳ (Maintenance):** Quản lý chu kỳ bảo dưỡng.
+- **Thành phần dùng chung:** Sử dụng component `<Protected />` để ẩn hiện UI dựa trên quyền RBAC. Style các modal, input, button đồng nhất (chuẩn hóa `form-control` & `button`).
+
 ## Chạy development
 
 ```powershell

@@ -25,6 +25,20 @@ export const PERMISSIONS = {
   TENANT_SETTINGS_UPDATE: 'tenant-settings.update',
   ORGANIZATION_VIEW: 'organization.view',
   ORGANIZATION_MANAGE: 'organization.manage',
+  EQUIPMENT_VIEW: 'equipment.view',
+  EQUIPMENT_CREATE: 'equipment.create',
+  EQUIPMENT_UPDATE: 'equipment.update',
+  EQUIPMENT_DELETE: 'equipment.delete',
+  INVENTORY_VIEW: 'inventory.view',
+  INVENTORY_CREATE: 'inventory.create',
+  INVENTORY_TRANSACTION: 'inventory.transaction',
+  WORK_ORDER_VIEW: 'work_order.view',
+  WORK_ORDER_CREATE: 'work_order.create',
+  WORK_ORDER_UPDATE: 'work_order.update',
+  MAINTENANCE_VIEW: 'maintenance.view',
+  MAINTENANCE_CREATE: 'maintenance.create',
+  MAINTENANCE_UPDATE: 'maintenance.update',
+  MAINTENANCE_DELETE: 'maintenance.delete',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -203,12 +217,27 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/operations',
     icon: 'operations',
     viewPermission: PERMISSIONS.OPERATIONS_VIEW,
-    actions: [],
+    actions: [
+      { key: PERMISSIONS.EQUIPMENT_VIEW, label: 'Xem thiết bị' },
+      { key: PERMISSIONS.EQUIPMENT_CREATE, label: 'Thêm thiết bị' },
+      { key: PERMISSIONS.EQUIPMENT_UPDATE, label: 'Cập nhật thiết bị' },
+      { key: PERMISSIONS.EQUIPMENT_DELETE, label: 'Xóa thiết bị' },
+      { key: PERMISSIONS.INVENTORY_VIEW, label: 'Xem kho' },
+      { key: PERMISSIONS.INVENTORY_CREATE, label: 'Tạo kho/vật tư' },
+      { key: PERMISSIONS.INVENTORY_TRANSACTION, label: 'Giao dịch kho' },
+      { key: PERMISSIONS.WORK_ORDER_VIEW, label: 'Xem phiếu công việc' },
+      { key: PERMISSIONS.WORK_ORDER_CREATE, label: 'Tạo phiếu công việc' },
+      { key: PERMISSIONS.WORK_ORDER_UPDATE, label: 'Sửa phiếu công việc' },
+      { key: PERMISSIONS.MAINTENANCE_VIEW, label: 'Xem KH bảo trì' },
+      { key: PERMISSIONS.MAINTENANCE_CREATE, label: 'Tạo KH bảo trì' },
+      { key: PERMISSIONS.MAINTENANCE_UPDATE, label: 'Cập nhật KH bảo trì' },
+      { key: PERMISSIONS.MAINTENANCE_DELETE, label: 'Xóa KH bảo trì' },
+    ],
     children: [
-      { id: 'eam-cmms', label: 'EAM / CMMS', href: '/eam-cmms' },
-      { id: 'equipments', label: 'Thiết bị', href: '/equipments' },
-      { id: 'maintenance', label: 'Bảo trì & công việc', href: '/maintenance' },
+      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment' },
       { id: 'inventory', label: 'Kho vật tư', href: '/inventory' },
+      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders' },
+      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance' },
       { id: 'occ', label: 'Liên kết OCC', href: '/occ' },
     ],
   },
@@ -228,6 +257,7 @@ export const navigationConfig: readonly NavigationItem[] = [
       { id: 'projects', label: 'Dự án', href: '/projects' },
     ],
   },
+
 ] as const;
 
 export function tenantPath(tenantSlug: string, href: string): string {

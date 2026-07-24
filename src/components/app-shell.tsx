@@ -1,11 +1,14 @@
 'use client';
 
 import {
+  Activity,
   Bell,
   BriefcaseBusiness,
   Building2,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
   FileCheck2,
   Files,
   LayoutDashboard,
@@ -13,6 +16,7 @@ import {
   LogOut,
   Menu,
   Network,
+  Package,
   RadioTower,
   ScrollText,
   Settings2,
@@ -46,6 +50,10 @@ const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   organization: Network,
   eoffice: BriefcaseBusiness,
   operations: RadioTower,
+  equipment: Settings2,
+  inventory: Package,
+  work_order: ClipboardList,
+  maintenance: CalendarClock,
 };
 
 const groupLabels: Record<NonNullable<NavigationItem['group']>, string> = {
