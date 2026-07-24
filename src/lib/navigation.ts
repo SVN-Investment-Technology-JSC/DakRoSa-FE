@@ -11,6 +11,8 @@ export const PERMISSIONS = {
   ROLES_DELETE: 'roles.delete',
   ROLES_ASSIGN_PERMISSIONS: 'roles.assign-permissions',
   AUDIT_VIEW: 'audit.view',
+  EOFFICE_VIEW: 'eoffice.view',
+  OPERATIONS_VIEW: 'operations.view',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -25,9 +27,16 @@ export interface NavigationItem {
   label: string;
   description: string;
   href: string;
-  icon: 'dashboard' | 'users' | 'roles' | 'audit';
+  icon: 'dashboard' | 'users' | 'roles' | 'audit' | 'eoffice' | 'operations';
   viewPermission: PermissionKey;
   actions: PermissionAction[];
+  children?: readonly NavigationChild[];
+}
+
+export interface NavigationChild {
+  id: string;
+  label: string;
+  href: string;
 }
 
 export const navigationConfig: readonly NavigationItem[] = [
@@ -76,5 +85,37 @@ export const navigationConfig: readonly NavigationItem[] = [
     icon: 'audit',
     viewPermission: PERMISSIONS.AUDIT_VIEW,
     actions: [],
+  },
+  {
+    id: 'operations',
+    label: 'Vận hành',
+    description: 'Theo dõi và điều phối vận hành nhà máy',
+    href: '/operations',
+    icon: 'operations',
+    viewPermission: PERMISSIONS.OPERATIONS_VIEW,
+    actions: [],
+    children: [
+      { id: 'eam-cmms', label: 'EAM / CMMS', href: '/eam-cmms' },
+      { id: 'equipments', label: 'Thiết bị', href: '/equipments' },
+      { id: 'maintenance', label: 'Bảo trì & công việc', href: '/maintenance' },
+      { id: 'inventory', label: 'Kho vật tư', href: '/inventory' },
+      { id: 'occ', label: 'Liên kết OCC', href: '/occ' },
+    ],
+  },
+  {
+    id: 'eoffice',
+    label: 'eOffice',
+    description: 'Quản lý công việc và hồ sơ điện tử',
+    href: '/eoffice',
+    icon: 'eoffice',
+    viewPermission: PERMISSIONS.EOFFICE_VIEW,
+    actions: [],
+    children: [
+      { id: 'eoffice-workflow', label: 'Văn bản & quy trình', href: '/eoffice-workflow' },
+      { id: 'hrm', label: 'Nhân sự & chấm công', href: '/hrm' },
+      { id: 'workspace', label: 'Không gian công việc', href: '/workspace' },
+      { id: 'kpi', label: 'KPI', href: '/kpi' },
+      { id: 'projects', label: 'Dự án', href: '/projects' },
+    ],
   },
 ] as const;
