@@ -2,11 +2,16 @@
 
 import {
   BriefcaseBusiness,
+  FileCheck2,
+  Files,
   LayoutDashboard,
+  ListTodo,
+  Network,
   Plus,
   RadioTower,
   Save,
   ScrollText,
+  Settings2,
   ShieldCheck,
   Trash2,
   Users,
@@ -17,16 +22,21 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Notice } from '@/components/ui/notice';
 import { apiRequest, ApiError } from '@/lib/api';
-import { navigationConfig, PERMISSIONS } from '@/lib/navigation';
+import { navigationConfig, NavigationIcon, PERMISSIONS } from '@/lib/navigation';
 import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types/rbac';
 
-const icons = {
+const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
+  'work-items': ListTodo,
+  submissions: Files,
+  signatures: FileCheck2,
   users: Users,
   roles: ShieldCheck,
   audit: ScrollText,
+  settings: Settings2,
+  organization: Network,
   eoffice: BriefcaseBusiness,
   operations: RadioTower,
 };

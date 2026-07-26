@@ -1,4 +1,4 @@
-import { navigationConfig, PermissionKey } from './navigation';
+import { navigationConfig, PermissionKey, tenantPath } from './navigation';
 import { AuthUser } from '@/types/auth';
 
 export function hasPermission(user: AuthUser | null, permission: PermissionKey): boolean {
@@ -7,7 +7,11 @@ export function hasPermission(user: AuthUser | null, permission: PermissionKey):
 }
 
 export function firstPermittedPath(user: AuthUser | null): string {
-  return navigationConfig.find((item) => hasPermission(user, item.viewPermission))?.href ?? '/forbidden';
+  const item = navigationConfig.find((candidate) =>
+    hasPermission(user, candidate.viewPermission),
+  );
+  if (!item || !user) return '/forbidden';
+  return tenantPath(user.activeTenant.slug, item.href);
 }
 
 export function normalizeModuleSelection(
@@ -33,4 +37,3 @@ export function normalizeModuleSelection(
   }
   return next;
 }
-

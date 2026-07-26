@@ -49,12 +49,12 @@ async function refreshSession(): Promise<AuthPayload> {
     .then(parseResponse<AuthPayload>)
     .then((payload) => {
       setAccessToken(payload.accessToken);
-      window.dispatchEvent(new CustomEvent('dakrosa:session-refreshed', { detail: payload.user }));
+      window.dispatchEvent(new CustomEvent('enterprise-portal:session-refreshed', { detail: payload.user }));
       return payload;
     })
     .catch((error) => {
       setAccessToken(null);
-      window.dispatchEvent(new Event('dakrosa:session-expired'));
+      window.dispatchEvent(new Event('enterprise-portal:session-expired'));
       throw error;
     })
     .finally(() => {
@@ -92,6 +92,10 @@ export const authApi = {
       { auth: false, retryUnauthorized: false },
     ),
   restore: refreshSession,
+  switchTenant: (tenantSlug: string) =>
+    apiRequest<AuthPayload>('/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify({ tenantSlug }),
+    }),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }, { retryUnauthorized: false }),
 };
-
