@@ -2,9 +2,9 @@ name: Frontend CI and image
 
 on:
   pull_request:
-    branches: [main]
+    branches: [dev/release, main]
   push:
-    branches: [main]
+    branches: [dev/release, main]
   workflow_dispatch:
 
 concurrency:
@@ -54,9 +54,25 @@ jobs:
       - name: Build
         run: pnpm build
 
+  validate-main-promotion:
+    name: Validate main promotion source
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow only dev/release as the source branch
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          test "$HEAD_BRANCH" = "dev/release" || {
+            echo "Only dev/release may open a pull request into main."
+            exit 1
+          }
+
   publish:
     name: Publish production image
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/dev/release' || github.ref == 'refs/heads/main')
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -112,7 +128,7 @@ jobs:
           sbom: true
 
       - name: Trigger Coolify deployment
-        if: env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
+        if: github.ref == 'refs/heads/dev/release' && env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
         run: >-
           curl --fail-with-body --silent --show-error
           --retry 2 --retry-all-errors
@@ -120,5 +136,9 @@ jobs:
           --header "Authorization: Bearer $COOLIFY_TOKEN"
 
       - name: Report skipped Coolify deployment
-        if: env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == ''
+        if: github.ref == 'refs/heads/dev/release' && (env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == '')
         run: echo "Image published; Coolify deployment skipped because repository secrets are not configured."
+
+      - name: Report deferred production deployment
+        if: github.ref == 'refs/heads/main'
+        run: echo "Production image published; Coolify deployment is intentionally deferred while the active resource tracks dev/release."
