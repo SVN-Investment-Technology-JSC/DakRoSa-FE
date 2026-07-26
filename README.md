@@ -1,10 +1,10 @@
 # DakRoSa Frontend
 
-Frontend Next.js App Router cho Core Portal ĐăkRơSa, thiết kế theo phong cách công nghiệp hiện đại và ưu tiên thao tác rõ ràng trên desktop lẫn màn hình nhỏ.
+Frontend Next.js App Router cho nền tảng quản trị doanh nghiệp đa tenant. ĐăkRơSa là cấu hình tenant mặc định; shell và route không phụ thuộc một doanh nghiệp duy nhất.
 
 ## Quy ước giao diện
 
-- Tailwind CSS là lớp styling chính; font Inter được áp dụng toàn cục.
+- Tailwind CSS là lớp styling chính; Nunito Sans Variable dùng cho UI và Literata Variable chỉ dùng cho tiêu đề. Font được self-host bằng package để bản chạy on-premise không gọi Google Fonts.
 - shadcn/ui là nền tảng cho các primitive dùng chung như `Button`, `Input`, `Label`, `Card`, `Alert`, `Dialog`.
 - Component nghiệp vụ được ghép từ primitive trong `src/components/ui`; không sao chép style riêng lẻ giữa các màn hình.
 - Ant Design chỉ dùng theo nhu cầu cho component dữ liệu phức tạp như table, tree table hoặc advanced picker; ưu tiên import theo component để kiểm soát bundle.
@@ -18,6 +18,9 @@ Frontend Next.js App Router cho Core Portal ĐăkRơSa, thiết kế theo phong 
 - Quản lý người dùng, trạng thái, vai trò và đặt lại mật khẩu.
 - Vai trò động và ma trận permission.
 - Nhật ký thao tác quản trị.
+- Tenant switcher và route `/t/{tenantSlug}/...`.
+- E-Office: danh sách hồ sơ, tạo bản nháp, chi tiết, gửi duyệt, phê duyệt/trả lại và lịch sử.
+- Việc cần xử lý và hàng đợi chữ ký số độc lập nhà cung cấp.
 - Trang 403 giữ nguyên phiên đăng nhập, không tự logout khi thiếu quyền.
 
 ## Chạy development
@@ -38,6 +41,7 @@ Mặc định frontend chạy tại `http://localhost:3000` và gọi API `http:
 - Đường dẫn đầu tiên user được phép truy cập.
 - Cây permission trong màn hình vai trò.
 - Nhãn quyền thao tác.
+- Đường dẫn tương đối được ghép với tenant hiện hành bằng `tenantPath`.
 
 Quy tắc ma trận:
 

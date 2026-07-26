@@ -1,18 +1,28 @@
 'use client';
 
-import { LayoutDashboard, Plus, Save, ScrollText, ShieldCheck, Trash2, Users } from 'lucide-react';
+import { FileCheck2, Files, LayoutDashboard, ListTodo, Network, Plus, Save, ScrollText, Settings2, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Notice } from '@/components/ui/notice';
 import { apiRequest, ApiError } from '@/lib/api';
-import { navigationConfig, PERMISSIONS } from '@/lib/navigation';
+import { navigationConfig, NavigationIcon, PERMISSIONS } from '@/lib/navigation';
 import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types/rbac';
 
-const icons = { dashboard: LayoutDashboard, users: Users, roles: ShieldCheck, audit: ScrollText };
+const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
+  dashboard: LayoutDashboard,
+  'work-items': ListTodo,
+  submissions: Files,
+  signatures: FileCheck2,
+  users: Users,
+  roles: ShieldCheck,
+  audit: ScrollText,
+  settings: Settings2,
+  organization: Network,
+};
 
 export default function RolesPage() {
   const { user } = useAuth();
