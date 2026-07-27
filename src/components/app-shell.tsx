@@ -52,7 +52,7 @@ const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
 const groupLabels: Record<NonNullable<NavigationItem['group']>, string> = {
   workspace: 'Không gian làm việc',
   office: 'Văn phòng điện tử',
-  administration: 'Quản trị hệ thống',
+  administration: 'Quản trị doanh nghiệp',
 };
 
 function matchesNavigationItem(pathname: string, href: string) {

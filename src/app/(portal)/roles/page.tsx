@@ -59,6 +59,12 @@ export default function RolesPage() {
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
     [roles, selectedRoleId],
   );
+  const selectedRoleIsAssignedToMe = Boolean(
+    selectedRole && user?.roleCodes.includes(selectedRole.code),
+  );
+  const canEditSelectedRole =
+    hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS) &&
+    !selectedRoleIsAssignedToMe;
 
   const load = useCallback(async (preferredId?: string) => {
     setLoading(true);
@@ -208,8 +214,8 @@ export default function RolesPage() {
               <div className="permission-header">
                 <div><span className="eyebrow">Ma trận quyền</span><h2>{selectedRole.name}</h2><p>{selectedRole.description || 'Chưa có mô tả cho vai trò này.'}</p></div>
                 <div className="page-actions">
-                  {hasPermission(user, PERMISSIONS.ROLES_UPDATE) && <Button variant="secondary" onClick={openEdit}>Cập nhật</Button>}
-                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && <Button variant="ghost" onClick={() => void removeRole()}><Trash2 size={15} /> Xóa</Button>}
+                  {hasPermission(user, PERMISSIONS.ROLES_UPDATE) && <Button variant="secondary" onClick={openEdit} disabled={selectedRoleIsAssignedToMe}>Cập nhật</Button>}
+                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && <Button variant="ghost" onClick={() => void removeRole()} disabled={selectedRoleIsAssignedToMe}><Trash2 size={15} /> Xóa</Button>}
                 </div>
               </div>
               <div className="permission-list">
@@ -225,7 +231,7 @@ export default function RolesPage() {
                             <input
                               type="checkbox"
                               checked={selectedKeys.has(option.key)}
-                              disabled={!hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS)}
+                              disabled={!canEditSelectedRole}
                               onChange={(event) => togglePermission(module.viewPermission, option.key, event.target.checked)}
                             />
                             {option.label}
@@ -238,8 +244,8 @@ export default function RolesPage() {
               </div>
               {hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS) && (
                 <div className="permission-footer">
-                  <Button variant="secondary" onClick={() => selectRole(selectedRole)}>Hoàn tác</Button>
-                  <Button onClick={() => void savePermissions()} disabled={saving}><Save size={16} /> {saving ? 'Đang lưu…' : 'Lưu ma trận quyền'}</Button>
+                  <Button variant="secondary" onClick={() => selectRole(selectedRole)} disabled={selectedRoleIsAssignedToMe}>Hoàn tác</Button>
+                  <Button onClick={() => void savePermissions()} disabled={saving || !canEditSelectedRole}><Save size={16} /> {saving ? 'Đang lưu…' : 'Lưu ma trận quyền'}</Button>
                 </div>
               )}
             </>
