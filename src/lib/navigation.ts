@@ -59,7 +59,11 @@ export type NavigationIcon =
   | 'settings'
   | 'organization'
   | 'eoffice'
-  | 'operations';
+  | 'operations'
+  | 'equipment'
+  | 'inventory'
+  | 'maintenance'
+  | 'work_order';
 
 export type TenantModuleKey =
   | 'core'
