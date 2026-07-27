@@ -72,7 +72,7 @@ export function WorkflowCanvas() {
   } | null>(null);
 
   // ResizeObserver quản lý vòng đời DOM node độc lập, không dùng nodeRefs
-  const resizeObservers = useRef<Map<string, ResizeObserver>>(new Map());
+//  const resizeObservers = useRef<Map<string, ResizeObserver>>(new Map());
 
 // ✅ Cách mới (Bản Refactor chuẩn React 19):
 const nodeRefCallback = useCallback((nodeId: string) => {
