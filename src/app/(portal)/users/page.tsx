@@ -179,7 +179,9 @@ export default function UsersPage() {
     setSubmitting(true);
     try {
       const payload = editingOwnAccount
-        ? (({ roleIds: _roleIds, ...profile }) => profile)(editForm)
+        ? Object.fromEntries(
+            Object.entries(editForm).filter(([key]) => key !== 'roleIds'),
+          )
         : editForm;
       await apiRequest(`/users/${selected.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       if (newPassword) {

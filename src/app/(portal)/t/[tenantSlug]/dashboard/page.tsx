@@ -24,7 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest, ApiError } from '@/lib/api';
 import { tenantPath } from '@/lib/navigation';
-import { useAuth } from '@/providers/auth-provider';
 import { SubmissionSummary } from '@/types/e-office';
 
 interface PlatformSummary {
@@ -124,7 +123,6 @@ function DataPending({ label, icon: Icon, detail, value }: {
 
 export default function TenantDashboardPage() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
-  const { user } = useAuth();
   const [platform, setPlatform] = useState<PlatformSummary | null>(null);
   const [office, setOffice] = useState<SubmissionSummary | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemsResponse | null>(null);
