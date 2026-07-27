@@ -362,12 +362,15 @@ const nodeRefCallback = useCallback((nodeId: string) => {
                   setDraggedNode({ id: node.id, offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top });
                 }}
               >
+                {/* Điểm nối phía trên */}
                 <div
-                  className="workflow-handle workflow-handle-top"
+                  className="workflow-handle workflow-handle-top absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-blue-500 rounded-full z-20 cursor-crosshair opacity-0 group-hover:opacity-100 hover:scale-125 hover:bg-blue-500 transition-all"
                   onPointerUp={(e) => handleConnectEnd(e, node.id)}
                 />
+
+                {/* Điểm nối phía dưới */}
                 <div
-                  className="workflow-handle workflow-handle-bottom"
+                  className="workflow-handle workflow-handle-bottom absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-blue-500 rounded-full z-20 cursor-crosshair opacity-0 group-hover:opacity-100 hover:scale-125 hover:bg-blue-500 transition-all"
                   onPointerDown={(e) => handleConnectStart(e, node.id)}
                 />
 
