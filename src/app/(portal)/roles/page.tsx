@@ -1,6 +1,16 @@
 'use client';
 
-import { LayoutDashboard, Plus, Save, ScrollText, ShieldCheck, Trash2, Users } from 'lucide-react';
+import {
+  BriefcaseBusiness,
+  LayoutDashboard,
+  Plus,
+  RadioTower,
+  Save,
+  ScrollText,
+  ShieldCheck,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
@@ -12,7 +22,14 @@ import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types/rbac';
 
-const icons = { dashboard: LayoutDashboard, users: Users, roles: ShieldCheck, audit: ScrollText };
+const icons = {
+  dashboard: LayoutDashboard,
+  users: Users,
+  roles: ShieldCheck,
+  audit: ScrollText,
+  eoffice: BriefcaseBusiness,
+  operations: RadioTower,
+};
 
 export default function RolesPage() {
   const { user } = useAuth();
