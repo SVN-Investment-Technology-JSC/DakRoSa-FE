@@ -3,9 +3,10 @@
 import { ReactNode } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { hasPermission } from '@/lib/permissions';
+import { PermissionKey } from '@/lib/navigation';
 
 interface ProtectedProps {
-  permission: string | string[];
+  permission: PermissionKey | PermissionKey[];
   fallback?: ReactNode;
   children: ReactNode;
 }
