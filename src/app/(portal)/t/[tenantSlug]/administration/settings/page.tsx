@@ -1,7 +1,7 @@
 'use client';
 
 import { Building2, Plus, Save } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,15 +36,23 @@ export default function TenantSettingsPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadSettings = async () => {
     try {
       setData(await apiRequest<Bootstrap>('/tenancy/settings'));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không thể tải cấu hình.');
     }
-  }, []);
+  };
 
-  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    let active = true;
+    apiRequest<Bootstrap>('/tenancy/settings')
+      .then((settings) => { if (active) setData(settings); })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Không thể tải cấu hình.');
+      });
+    return () => { active = false; };
+  }, []);
 
   const saveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,7 +72,7 @@ export default function TenantSettingsPage() {
         }),
       });
       setMessage('Đã lưu cấu hình doanh nghiệp.');
-      await load();
+      await loadSettings();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu cấu hình.');
     } finally {
@@ -87,7 +95,7 @@ export default function TenantSettingsPage() {
       });
       event.currentTarget.reset();
       setMessage('Đã thêm nhà máy/địa điểm.');
-      await load();
+      await loadSettings();
     } catch (siteError) {
       setError(siteError instanceof Error ? siteError.message : 'Không thể thêm địa điểm.');
     }
@@ -99,7 +107,7 @@ export default function TenantSettingsPage() {
         method: 'PATCH',
         body: JSON.stringify({ isActive: !site.isActive }),
       });
-      await load();
+      await loadSettings();
     } catch (siteError) {
       setError(siteError instanceof Error ? siteError.message : 'Không thể cập nhật địa điểm.');
     }

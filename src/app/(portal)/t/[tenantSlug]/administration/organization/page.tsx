@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Network, Plus, Trash2 } from 'lucide-react';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
@@ -18,18 +18,26 @@ export default function OrganizationPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const load = useCallback(async () => {
+  const loadOrganization = async () => {
     try { setData(await apiRequest<Organization>('/tenancy/organization')); }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Không thể tải cơ cấu tổ chức.'); }
+  };
+  useEffect(() => {
+    let active = true;
+    apiRequest<Organization>('/tenancy/organization')
+      .then((organization) => { if (active) setData(organization); })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Không thể tải cơ cấu tổ chức.');
+      });
+    return () => { active = false; };
   }, []);
-  useEffect(() => void load(), [load]);
 
   const submitUnit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
       await apiRequest('/tenancy/organization/units', { method: 'POST', body: JSON.stringify({ code: form.get('code'), name: form.get('name'), type: form.get('type'), parentId: form.get('parentId') || undefined }) });
-      event.currentTarget.reset(); setMessage('Đã thêm đơn vị tổ chức.'); await load();
+      event.currentTarget.reset(); setMessage('Đã thêm đơn vị tổ chức.'); await loadOrganization();
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Không thể thêm đơn vị.'); }
   };
   const submitPosition = async (event: FormEvent<HTMLFormElement>) => {
@@ -37,11 +45,11 @@ export default function OrganizationPage() {
     const form = new FormData(event.currentTarget);
     try {
       await apiRequest('/tenancy/organization/positions', { method: 'POST', body: JSON.stringify({ code: form.get('code'), name: form.get('name'), organizationUnitId: form.get('organizationUnitId') || undefined }) });
-      event.currentTarget.reset(); setMessage('Đã thêm chức danh.'); await load();
+      event.currentTarget.reset(); setMessage('Đã thêm chức danh.'); await loadOrganization();
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Không thể thêm chức danh.'); }
   };
   const deactivate = async (kind: 'units' | 'positions', id: string) => {
-    try { await apiRequest(`/tenancy/organization/${kind}/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }); setMessage('Đã ngừng kích hoạt bản ghi.'); await load(); }
+    try { await apiRequest(`/tenancy/organization/${kind}/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }); setMessage('Đã ngừng kích hoạt bản ghi.'); await loadOrganization(); }
     catch (actionError) { setError(actionError instanceof Error ? actionError.message : 'Không thể cập nhật bản ghi.'); }
   };
 
