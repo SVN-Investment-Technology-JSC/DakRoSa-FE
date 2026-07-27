@@ -33,6 +33,7 @@ const getInitialCreate = () => ({
   phone: '',
   address: '',
   password: '',
+  tenantId: '',
   roleIds: [] as string[],
   joinedAt: getLocalDate(),
   workShift: '',
@@ -62,6 +63,7 @@ interface DialogState {
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
+  const isPlatformAdmin = Boolean(currentUser?.isPlatformAdmin);
   const [data, setData] = useState<{ result: UserListResponse; roles: Role[] }>({ result: emptyResult, roles: [] });
   const { result, roles } = data;
   const [search, setSearch] = useState('');
@@ -78,13 +80,18 @@ export default function UsersPage() {
   const editingOwnAccount = selected?.id === currentUser?.id;
   const [submitting, setSubmitting] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState({ create: false, edit: false, reset: false });
+  const tenantQuery = useCallback((tenantId?: string) => isPlatformAdmin && tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '', [isPlatformAdmin]);
+  const loadAssignableRoles = useCallback(async (tenantId?: string) => {
+    const assignableRoles = await apiRequest<Role[]>(`/users/assignable-roles${tenantQuery(tenantId)}`);
+    setData((state) => ({ ...state, roles: assignableRoles }));
+  }, [tenantQuery]);
 
   const load = useCallback(async (term: string) => {
     setLoading(true);
     try {
       const [users, assignableRoles] = await Promise.all([
         apiRequest<UserListResponse>(`/users?limit=50&search=${encodeURIComponent(term)}`),
-        apiRequest<Role[]>('/users/assignable-roles'),
+        apiRequest<Role[]>(`/users/assignable-roles${tenantQuery(currentUser?.activeTenant.id)}`),
       ]);
       setData({ result: users, roles: assignableRoles });
     } catch (error) {
@@ -92,13 +99,13 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser?.activeTenant.id, tenantQuery]);
 
   useEffect(() => {
     let active = true;
     Promise.all([
       apiRequest<UserListResponse>('/users?limit=50&search='),
-      apiRequest<Role[]>('/users/assignable-roles'),
+      apiRequest<Role[]>(`/users/assignable-roles${tenantQuery(currentUser?.activeTenant.id)}`),
     ])
       .then(([users, assignableRoles]) => {
         if (!active) return;
@@ -114,17 +121,20 @@ export default function UsersPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUser?.activeTenant.id, tenantQuery]);
 
   const showError = (error: unknown) =>
     setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Thao tác không thành công.' });
 
   const openCreate = () => {
     setVisiblePasswords((state) => ({ ...state, create: false }));
-    setDialogState({ mode: 'create', selected: null, createForm: getInitialCreate(), editForm: getInitialEdit(), newPassword: '' });
+    const tenantId = currentUser?.activeTenant.id ?? '';
+    setDialogState({ mode: 'create', selected: null, createForm: { ...getInitialCreate(), tenantId }, editForm: getInitialEdit(), newPassword: '' });
+    void loadAssignableRoles(tenantId).catch(showError);
   };
 
   const openEdit = (item: UserRecord) => {
+    void loadAssignableRoles(item.tenantId).catch(showError);
     setDialogState({
       mode: 'edit',
       selected: item,
@@ -156,7 +166,8 @@ export default function UsersPage() {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await apiRequest('/users', { method: 'POST', body: JSON.stringify(createForm) });
+      const { tenantId, ...payload } = createForm;
+      await apiRequest(`/users${tenantQuery(tenantId)}`, { method: 'POST', body: JSON.stringify(payload) });
       closeDialog();
       setNotice({ tone: 'success', message: 'Đã tạo tài khoản mới.' });
       await load(search);
@@ -175,9 +186,9 @@ export default function UsersPage() {
       const payload = editingOwnAccount
         ? (({ roleIds: _roleIds, ...profile }) => profile)(editForm)
         : editForm;
-      await apiRequest(`/users/${selected.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      await apiRequest(`/users/${selected.id}${tenantQuery(selected.tenantId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
       if (newPassword) {
-        await apiRequest(`/users/${selected.id}/reset-password`, {
+        await apiRequest(`/users/${selected.id}/reset-password${tenantQuery(selected.tenantId)}`, {
           method: 'POST',
           body: JSON.stringify({ newPassword }),
         });
@@ -197,7 +208,7 @@ export default function UsersPage() {
     if (!selected) return;
     setSubmitting(true);
     try {
-      await apiRequest(`/users/${selected.id}/reset-password`, {
+      await apiRequest(`/users/${selected.id}/reset-password${tenantQuery(selected.tenantId)}`, {
         method: 'POST',
         body: JSON.stringify({ newPassword }),
       });
@@ -213,7 +224,7 @@ export default function UsersPage() {
   const remove = async (item: UserRecord) => {
     if (!window.confirm(`Xóa tài khoản @${item.username}? Thao tác này không thể hoàn tác.`)) return;
     try {
-      await apiRequest(`/users/${item.id}`, { method: 'DELETE' });
+      await apiRequest(`/users/${item.id}${tenantQuery(item.tenantId)}`, { method: 'DELETE' });
       setNotice({ tone: 'success', message: 'Đã xóa tài khoản.' });
       await load(search);
     } catch (error) {
@@ -226,7 +237,7 @@ export default function UsersPage() {
       <PageHeading
         eyebrow="Quản trị truy cập"
         title="Người dùng hệ thống"
-        description="Cấp tài khoản, gán vai trò và kiểm soát trạng thái truy cập. Mật khẩu chỉ được nhận ở biểu mẫu và không xuất hiện trong log."
+        description={isPlatformAdmin ? 'Quản lý tập trung toàn bộ tài khoản; mỗi bản ghi hiển thị rõ doanh nghiệp sở hữu. Mật khẩu chỉ được nhận ở biểu mẫu và không xuất hiện trong log.' : 'Cấp tài khoản, gán vai trò và kiểm soát trạng thái truy cập trong doanh nghiệp của bạn. Mật khẩu chỉ được nhận ở biểu mẫu và không xuất hiện trong log.'}
         actions={hasPermission(currentUser, PERMISSIONS.USERS_CREATE) ? <Button onClick={openCreate}><Plus size={16} /> Tạo người dùng</Button> : undefined}
       />
       {notice && <Notice tone={notice.tone}>{notice.message}</Notice>}
@@ -244,13 +255,14 @@ export default function UsersPage() {
           <div className="empty-state"><UsersRound size={38} /><strong>Chưa có người dùng phù hợp</strong><p>Thử từ khóa khác hoặc tạo tài khoản mới.</p></div>
         ) : (
           <table className="data-table">
-            <thead><tr><th>Người dùng</th><th>Vai trò</th><th>Trạng thái</th><th>Lần đăng nhập cuối</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
+            <thead><tr><th>Người dùng</th>{isPlatformAdmin && <th>Doanh nghiệp</th>}<th>Vai trò</th><th>Trạng thái</th><th>Lần đăng nhập cuối</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
             <tbody>
               {result.items.map((item) => {
                 const protectedPlatformAdmin = item.isPlatformAdmin;
                 return (
                   <tr key={item.id}>
                     <td><span className="cell-main">{item.displayName}</span><span className="cell-sub">@{item.username}</span></td>
+                    {isPlatformAdmin && <td><span className="cell-main">{item.tenantShortName}</span><span className="cell-sub">{item.tenantName}</span></td>}
                     <td><div className="role-chips">{item.roles.length ? item.roles.map((role) => <span className="role-chip" key={role.id}>{role.name}</span>) : <span className="cell-sub">Chưa gán vai trò</span>}</div></td>
                     <td><span className={`status-badge ${item.isActive ? 'status-active' : 'status-inactive'}`}>{item.isActive ? 'Hoạt động' : 'Đã khóa'}</span></td>
                     <td>{item.lastLoginAt ? dateTimeFormatter.format(new Date(item.lastLoginAt)) : <span className="cell-sub">Chưa đăng nhập</span>}</td>
@@ -319,6 +331,13 @@ export default function UsersPage() {
                     <button type="button" onClick={() => setVisiblePasswords((state) => ({ ...state, create: !state.create }))} aria-label={visiblePasswords.create ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}>{visiblePasswords.create ? <EyeOff size={17} /> : <Eye size={17} />}</button>
                   </div>
                 </div>
+                {isPlatformAdmin && <div className="form-field">
+                  <label htmlFor="create-tenant">Doanh nghiệp <span className="required-mark">*</span></label>
+                  <select id="create-tenant" className="form-control" value={createForm.tenantId} onChange={(event) => { const tenantId = event.target.value; setDialogState((state) => ({ ...state, createForm: { ...state.createForm, tenantId, roleIds: [] } })); void loadAssignableRoles(tenantId).catch(showError); }} required>
+                    <option value="">Chọn doanh nghiệp</option>
+                    {currentUser?.tenants.map((tenant) => <option value={tenant.id} key={tenant.id}>{tenant.shortName} · {tenant.code}</option>)}
+                  </select>
+                </div>}
                 <div className="form-field">
                   <label htmlFor="create-role">Vai trò <span className="required-mark">*</span></label>
                   <select id="create-role" className="form-control" value={createForm.roleIds[0] ?? ''} onChange={(event) => setDialogState((state) => ({ ...state, createForm: { ...state.createForm, roleIds: event.target.value ? [event.target.value] : [] } }))} required>

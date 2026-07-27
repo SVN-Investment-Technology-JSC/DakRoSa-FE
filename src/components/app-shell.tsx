@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       navigationConfig.filter(
         (item) =>
           hasPermission(user, item.viewPermission) &&
-          (!item.module || user?.activeTenant.enabledModules.includes(item.module)),
+          (!item.module || user?.isPlatformAdmin || user?.activeTenant.enabledModules.includes(item.module)),
       ),
     [user],
   );
@@ -92,7 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pageAllowed =
     !activeItem ||
     (hasPermission(user, activeItem.viewPermission) &&
-      (!activeItem.module ||
+      (!activeItem.module || user?.isPlatformAdmin ||
         user?.activeTenant.enabledModules.includes(activeItem.module)));
   const tenantMismatch =
     Boolean(routeTenantSlug) &&

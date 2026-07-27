@@ -15,5 +15,8 @@ export interface UserRecord {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  tenantId: string;
+  tenantName: string;
+  tenantShortName: string;
   roles: Role[];
 }

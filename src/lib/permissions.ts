@@ -3,7 +3,7 @@ import { AuthUser } from '@/types/auth';
 
 export function hasPermission(user: AuthUser | null, permission: PermissionKey): boolean {
   if (!user) return false;
-  return user.roleCodes.includes('admin') || user.permissions.includes(permission);
+  return user.isPlatformAdmin || user.roleCodes.includes('admin') || user.permissions.includes(permission);
 }
 
 export function firstPermittedPath(user: AuthUser | null): string {
