@@ -190,7 +190,7 @@ export default function RolesPage() {
       <PageHeading
         eyebrow="RBAC Permission"
         title="Vai trò và phân quyền"
-        description="Vai trò được tạo động. Quyền “Xem” là nền tảng: bỏ quyền xem sẽ tự xóa toàn bộ quyền thao tác của phân hệ đó."
+        description="Role “Người dùng” là mẫu khởi tạo có thể điều chỉnh và đổi tên theo doanh nghiệp. Quyền “Xem” là nền tảng: bỏ quyền xem sẽ tự xóa toàn bộ quyền thao tác của phân hệ đó."
         actions={hasPermission(user, PERMISSIONS.ROLES_CREATE) ? <Button onClick={openCreate}><Plus size={16} /> Tạo vai trò</Button> : undefined}
       />
       {notice && <Notice tone={notice.tone}>{notice.message}</Notice>}
