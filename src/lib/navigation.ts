@@ -148,7 +148,7 @@ export const navigationConfig: readonly NavigationItem[] = [
   {
     id: 'users',
     group: 'administration',
-    label: 'Người dùng',
+    label: 'Người dùng doanh nghiệp',
     description: 'Tài khoản và vai trò được gán',
     href: '/users',
     icon: 'users',
@@ -178,7 +178,7 @@ export const navigationConfig: readonly NavigationItem[] = [
   {
     id: 'audit',
     group: 'administration',
-    label: 'Nhật ký hệ thống',
+    label: 'Nhật ký doanh nghiệp',
     description: 'Dấu vết thao tác quản trị',
     href: '/audit',
     icon: 'audit',

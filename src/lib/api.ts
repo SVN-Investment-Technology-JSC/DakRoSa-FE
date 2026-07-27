@@ -1,4 +1,5 @@
 import { AuthPayload } from '@/types/auth';
+import { demoDataForMissingGet, withDemoData } from './demo-data';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
 
@@ -81,7 +82,17 @@ export async function apiRequest<T>(
     await refreshSession();
     return apiRequest<T>(path, init, { ...options, retryUnauthorized: false });
   }
-  return parseResponse<T>(response);
+  try {
+    return withDemoData(path, await parseResponse<T>(response)) as T;
+  } catch (error) {
+    const isGetRequest = !init.method || init.method.toUpperCase() === 'GET';
+    const canUseMissingRouteDemo = error instanceof ApiError && error.status === 404;
+    const demo = isGetRequest && canUseMissingRouteDemo
+      ? demoDataForMissingGet(path)
+      : undefined;
+    if (demo !== undefined) return demo as T;
+    throw error;
+  }
 }
 
 export const authApi = {
