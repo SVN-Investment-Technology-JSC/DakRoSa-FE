@@ -164,7 +164,6 @@ button { cursor: pointer; }
 .nav-item svg:first-child { color: #77999f; }
 .nav-item span { flex: 1; }
 .nav-item-active { color: #fff; background: linear-gradient(90deg, rgba(24, 169, 157, .21), rgba(24, 169, 157, .07)); box-shadow: inset 3px 0 #31c6bb; }
-.nav-item-active svg:first-child { color: #42cfc4; }
 .nav-expand-button { display: grid; place-items: center; width: 28px; height: 28px; margin: -4px; border: 0; border-radius: 7px; color: inherit; background: transparent; cursor: pointer; }
 .nav-expand-button:hover { background: rgba(255,255,255,.1); }
 .nav-chevron-open { transform: rotate(180deg); }
