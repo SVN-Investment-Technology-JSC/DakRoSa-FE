@@ -41,7 +41,7 @@ export default function InventoryPage() {
     try {
       const data = await inventoryApi.getMaterials();
       setMaterials(data);
-    } catch (error: any) {
+    } catch {
       setNotice({ tone: 'error', message: 'Lỗi tải danh sách vật tư' });
     }
   }, []);
@@ -50,7 +50,7 @@ export default function InventoryPage() {
     try {
       const data = await inventoryApi.getStock();
       setStock(data);
-    } catch (error: any) {
+    } catch {
       setNotice({ tone: 'error', message: 'Lỗi tải tồn kho' });
     }
   }, []);
@@ -62,6 +62,7 @@ export default function InventoryPage() {
   }, [loadMaterials, loadStock]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
 
@@ -105,7 +106,7 @@ export default function InventoryPage() {
       }
       setDialog(null);
       loadMaterials();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi lưu vật tư.' });
     } finally {
       setSaving(false);
@@ -128,7 +129,7 @@ export default function InventoryPage() {
       setNotice({ tone: 'success', message: 'Giao dịch thành công.' });
       setDialog(null);
       loadStock();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi giao dịch kho.' });
     } finally {
       setSaving(false);

@@ -1,11 +1,9 @@
 'use client';
 
 import {
-  Activity,
   BriefcaseBusiness,
   CalendarClock,
   ClipboardList,
-  Edit2,
   FileCheck2,
   Files,
   LayoutDashboard,

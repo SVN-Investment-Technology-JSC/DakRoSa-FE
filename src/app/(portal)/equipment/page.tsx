@@ -33,7 +33,7 @@ export default function EquipmentPage() {
     try {
       const data = await equipmentApi.getAll();
       setEquipments(data);
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi khi tải danh sách thiết bị' });
     } finally {
       setLoading(false);
@@ -41,6 +41,7 @@ export default function EquipmentPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -85,7 +86,7 @@ export default function EquipmentPage() {
       }
       setDialog(null);
       load();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi khi lưu thiết bị.' });
     } finally {
       setSaving(false);
@@ -98,7 +99,7 @@ export default function EquipmentPage() {
       await equipmentApi.delete(id);
       setNotice({ tone: 'success', message: 'Xóa thiết bị thành công.' });
       load();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi khi xóa thiết bị.' });
     }
   };

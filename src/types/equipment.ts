@@ -6,7 +6,7 @@ export interface Equipment {
   category: string | null;
   status: string;
   installationDate: string | null;
-  specs: Record<string, any> | null;
+  specs: Record<string, unknown> | null;
   description: string | null;
   createdAt: string;
   updatedAt: string;
@@ -20,8 +20,8 @@ export interface CreateEquipmentDto {
   category?: string;
   status?: string;
   installationDate?: string;
-  specs?: Record<string, any>;
+  specs?: Record<string, unknown>;
   description?: string;
 }
 
-export interface UpdateEquipmentDto extends Partial<CreateEquipmentDto> {}
+export type UpdateEquipmentDto = Partial<CreateEquipmentDto>;

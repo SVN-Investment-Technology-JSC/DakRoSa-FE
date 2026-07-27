@@ -41,7 +41,7 @@ export default function MaintenancePage() {
       ]);
       setPlans(plansData);
       setEquipments(equipData);
-    } catch (error: any) {
+    } catch {
       setNotice({ tone: 'error', message: 'Lỗi tải danh sách kế hoạch bảo trì' });
     } finally {
       setLoading(false);
@@ -49,6 +49,7 @@ export default function MaintenancePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -94,7 +95,7 @@ export default function MaintenancePage() {
       }
       setDialog(null);
       load();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi lưu kế hoạch bảo trì.' });
     } finally {
       setSaving(false);
@@ -107,7 +108,7 @@ export default function MaintenancePage() {
       await maintenanceApi.delete(id);
       setNotice({ tone: 'success', message: 'Xóa kế hoạch thành công.' });
       load();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi khi xóa kế hoạch.' });
     }
   };

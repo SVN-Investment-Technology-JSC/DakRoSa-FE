@@ -34,7 +34,7 @@ export default function WorkOrderPage() {
     try {
       const data = await workOrderApi.getAll();
       setWorkOrders(data);
-    } catch (error: any) {
+    } catch {
       setNotice({ tone: 'error', message: 'Lỗi tải danh sách phiếu công việc' });
     } finally {
       setLoading(false);
@@ -42,6 +42,7 @@ export default function WorkOrderPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -89,7 +90,7 @@ export default function WorkOrderPage() {
       }
       setDialog(null);
       load();
-    } catch (error: any) {
+    } catch (err) { const error = err as Error;
       setNotice({ tone: 'error', message: error.message || 'Lỗi lưu phiếu công việc.' });
     } finally {
       setSaving(false);
@@ -211,14 +212,14 @@ export default function WorkOrderPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Loại phiếu</label>
-              <select className="form-control" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as any })}>
+              <select className="form-control" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as never })}>
                 <option value="INCIDENT">Sự cố (INCIDENT)</option>
                 <option value="MAINTENANCE">Bảo trì (MAINTENANCE)</option>
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Độ ưu tiên</label>
-              <select className="form-control" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as any })}>
+              <select className="form-control" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as never })}>
                 <option value="LOW">Thấp (LOW)</option>
                 <option value="NORMAL">Bình thường (NORMAL)</option>
                 <option value="HIGH">Cao (HIGH)</option>
@@ -231,7 +232,7 @@ export default function WorkOrderPage() {
             <div className="grid grid-cols-2 gap-4 border-t border-gray-100 dark:border-gray-800 pt-4 mt-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Trạng thái</label>
-                <select className="form-control" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })}>
+                <select className="form-control" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as never })}>
                   <option value="DRAFT">Nháp (DRAFT)</option>
                   <option value="ASSIGNED">Đã phân công (ASSIGNED)</option>
                   <option value="IN_PROGRESS">Đang xử lý (IN_PROGRESS)</option>
