@@ -60,7 +60,7 @@ export default function RolesPage() {
     [roles, selectedRoleId],
   );
   const selectedRoleIsAssignedToMe = Boolean(
-    selectedRole && user?.roleCodes.includes(selectedRole.code),
+    selectedRole && !user?.isPlatformAdmin && user?.roleCodes.includes(selectedRole.code),
   );
   const canEditSelectedRole =
     hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS) &&
