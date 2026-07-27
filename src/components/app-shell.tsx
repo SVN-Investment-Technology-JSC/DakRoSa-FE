@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ChevronRight, LayoutDashboard, LogOut, Menu, ScrollText, ShieldCheck, Users, X } from 'lucide-react';
+import { Activity, BriefcaseBusiness, ChevronDown, ChevronRight, LayoutDashboard, LogOut, Menu, RadioTower, ScrollText, ShieldCheck, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -14,10 +14,16 @@ const icons = {
   users: Users,
   roles: ShieldCheck,
   audit: ScrollText,
+  eoffice: BriefcaseBusiness,
+  operations: RadioTower,
 };
 
 function matchesNavigationItem(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function matchesItemOrChild(pathname: string, item: (typeof navigationConfig)[number]) {
+  return matchesNavigationItem(pathname, item.href) || item.children?.some((child) => matchesNavigationItem(pathname, child.href));
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -25,12 +31,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<ReadonlySet<string>>(() => new Set());
 
   const visibleItems = useMemo(
     () => navigationConfig.filter((item) => hasPermission(user, item.viewPermission)),
     [user],
   );
-  const activeItem = navigationConfig.find((item) => matchesNavigationItem(pathname, item.href));
+  const activeItem = navigationConfig.find((item) => matchesItemOrChild(pathname, item));
+  const activeChild = activeItem?.children?.find((child) => matchesNavigationItem(pathname, child.href));
   const pageAllowed = !activeItem || hasPermission(user, activeItem.viewPermission);
 
   useEffect(() => {
@@ -79,18 +87,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="nav-label">Không gian vận hành</span>
           {visibleItems.map((item) => {
             const Icon = icons[item.icon];
-            const active = matchesNavigationItem(pathname, item.href);
+            const active = matchesItemOrChild(pathname, item);
+            const expanded = expandedItems.has(item.id) || active;
+            const toggleExpanded = () => {
+              setExpandedItems((current) => {
+                const next = new Set(current);
+                if (next.has(item.id)) next.delete(item.id);
+                else next.add(item.id);
+                return next;
+              });
+            };
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`nav-item ${active ? 'nav-item-active' : ''}`}
-                onClick={() => setMobileOpen(false)}
-              >
-                <Icon size={19} />
-                <span>{item.label}</span>
-                {active && <ChevronRight size={16} />}
-              </Link>
+              <div className="nav-group" key={item.id}>
+                <div className={`nav-item ${active ? 'nav-item-active' : ''}`}>
+                  <Link href={item.href} onClick={() => setMobileOpen(false)}>
+                    <Icon size={19} />
+                    <span>{item.label}</span>
+                  </Link>
+                  {item.children ? (
+                    <button type="button" className="nav-expand-button" onClick={toggleExpanded} aria-label={`Mở danh sách ${item.label}`} aria-expanded={expanded}>
+                      <ChevronDown size={16} className={expanded ? 'nav-chevron-open' : ''} />
+                    </button>
+                  ) : active ? <ChevronRight size={16} /> : null}
+                </div>
+                {item.children && expanded && (
+                  <div className="nav-children">
+                    {item.children.map((child) => {
+                      const childActive = matchesNavigationItem(pathname, child.href);
+                      return <Link key={child.id} href={child.href} className={`nav-child ${childActive ? 'nav-child-active' : ''}`} onClick={() => setMobileOpen(false)}>{child.label}</Link>;
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -114,7 +142,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <div>
             <span>Trung tâm vận hành</span>
-            <strong>{activeItem?.label ?? 'ĐăkRơSa'}</strong>
+            <strong>{activeChild?.label ?? activeItem?.label ?? 'ĐăkRơSa'}</strong>
           </div>
           <div className="live-indicator"><i /> Hệ thống trực tuyến</div>
         </header>
