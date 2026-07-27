@@ -7,9 +7,23 @@ describe('firstPermittedPath', () => {
       id: 'admin-id',
       username: 'admin',
       displayName: 'Quản trị hệ thống',
+      activeTenant: {
+        id: 'tenant-id',
+        slug: 'dakrosa',
+        code: 'DAKROSA',
+        name: 'Công ty Cổ phần Thủy điện ĐăkRơSa',
+        shortName: 'EVN HPC ĐăkRơSa',
+        logoUrl: '/brand/dakrosa-logo.jpg',
+        primaryColor: '#386948',
+        locale: 'vi-VN',
+        timezone: 'Asia/Ho_Chi_Minh',
+        roleCodes: ['admin'],
+        permissions: [],
+      },
+      tenants: [],
       roleCodes: ['admin'],
       permissions: [],
-    })).toBe('/dashboard');
+    })).toBe('/t/dakrosa/dashboard');
   });
 });
 

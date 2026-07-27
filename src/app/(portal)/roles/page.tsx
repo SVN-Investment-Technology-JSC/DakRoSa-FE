@@ -2,11 +2,16 @@
 
 import {
   BriefcaseBusiness,
+  FileCheck2,
+  Files,
   LayoutDashboard,
+  ListTodo,
+  Network,
   Plus,
   RadioTower,
   Save,
   ScrollText,
+  Settings2,
   ShieldCheck,
   Trash2,
   Users,
@@ -17,16 +22,21 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Notice } from '@/components/ui/notice';
 import { apiRequest, ApiError } from '@/lib/api';
-import { navigationConfig, PERMISSIONS } from '@/lib/navigation';
+import { navigationConfig, NavigationIcon, PERMISSIONS } from '@/lib/navigation';
 import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types/rbac';
 
-const icons = {
+const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
+  'work-items': ListTodo,
+  submissions: Files,
+  signatures: FileCheck2,
   users: Users,
   roles: ShieldCheck,
   audit: ScrollText,
+  settings: Settings2,
+  organization: Network,
   eoffice: BriefcaseBusiness,
   operations: RadioTower,
 };
@@ -49,6 +59,12 @@ export default function RolesPage() {
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
     [roles, selectedRoleId],
   );
+  const selectedRoleIsAssignedToMe = Boolean(
+    selectedRole && !user?.isPlatformAdmin && user?.roleCodes.includes(selectedRole.code),
+  );
+  const canEditSelectedRole =
+    hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS) &&
+    !selectedRoleIsAssignedToMe;
 
   const load = useCallback(async (preferredId?: string) => {
     setLoading(true);
@@ -174,7 +190,7 @@ export default function RolesPage() {
       <PageHeading
         eyebrow="RBAC Permission"
         title="Vai trò và phân quyền"
-        description="Vai trò được tạo động. Quyền “Xem” là nền tảng: bỏ quyền xem sẽ tự xóa toàn bộ quyền thao tác của phân hệ đó."
+        description="Role “Người dùng” là mẫu khởi tạo có thể điều chỉnh và đổi tên theo doanh nghiệp. Quyền “Xem” là nền tảng: bỏ quyền xem sẽ tự xóa toàn bộ quyền thao tác của phân hệ đó."
         actions={hasPermission(user, PERMISSIONS.ROLES_CREATE) ? <Button onClick={openCreate}><Plus size={16} /> Tạo vai trò</Button> : undefined}
       />
       {notice && <Notice tone={notice.tone}>{notice.message}</Notice>}
@@ -198,8 +214,8 @@ export default function RolesPage() {
               <div className="permission-header">
                 <div><span className="eyebrow">Ma trận quyền</span><h2>{selectedRole.name}</h2><p>{selectedRole.description || 'Chưa có mô tả cho vai trò này.'}</p></div>
                 <div className="page-actions">
-                  {hasPermission(user, PERMISSIONS.ROLES_UPDATE) && <Button variant="secondary" onClick={openEdit}>Cập nhật</Button>}
-                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && <Button variant="ghost" onClick={() => void removeRole()}><Trash2 size={15} /> Xóa</Button>}
+                  {hasPermission(user, PERMISSIONS.ROLES_UPDATE) && <Button variant="secondary" onClick={openEdit} disabled={selectedRoleIsAssignedToMe}>Cập nhật</Button>}
+                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && <Button variant="ghost" onClick={() => void removeRole()} disabled={selectedRoleIsAssignedToMe}><Trash2 size={15} /> Xóa</Button>}
                 </div>
               </div>
               <div className="permission-list">
@@ -215,7 +231,7 @@ export default function RolesPage() {
                             <input
                               type="checkbox"
                               checked={selectedKeys.has(option.key)}
-                              disabled={!hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS)}
+                              disabled={!canEditSelectedRole}
                               onChange={(event) => togglePermission(module.viewPermission, option.key, event.target.checked)}
                             />
                             {option.label}
@@ -228,8 +244,8 @@ export default function RolesPage() {
               </div>
               {hasPermission(user, PERMISSIONS.ROLES_ASSIGN_PERMISSIONS) && (
                 <div className="permission-footer">
-                  <Button variant="secondary" onClick={() => selectRole(selectedRole)}>Hoàn tác</Button>
-                  <Button onClick={() => void savePermissions()} disabled={saving}><Save size={16} /> {saving ? 'Đang lưu…' : 'Lưu ma trận quyền'}</Button>
+                  <Button variant="secondary" onClick={() => selectRole(selectedRole)} disabled={selectedRoleIsAssignedToMe}>Hoàn tác</Button>
+                  <Button onClick={() => void savePermissions()} disabled={saving || !canEditSelectedRole}><Save size={16} /> {saving ? 'Đang lưu…' : 'Lưu ma trận quyền'}</Button>
                 </div>
               )}
             </>

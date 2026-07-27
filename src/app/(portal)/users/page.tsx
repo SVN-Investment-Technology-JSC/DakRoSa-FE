@@ -75,8 +75,13 @@ export default function UsersPage() {
     newPassword: '',
   });
   const { mode: dialog, selected, createForm, editForm, newPassword } = dialogState;
+  const editingOwnAccount = selected?.id === currentUser?.id;
   const [submitting, setSubmitting] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState({ create: false, edit: false, reset: false });
+  const loadAssignableRoles = useCallback(async () => {
+    const assignableRoles = await apiRequest<Role[]>('/users/assignable-roles');
+    setData((state) => ({ ...state, roles: assignableRoles }));
+  }, []);
 
   const load = useCallback(async (term: string) => {
     setLoading(true);
@@ -113,7 +118,7 @@ export default function UsersPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUser?.activeTenant.id]);
 
   const showError = (error: unknown) =>
     setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Thao tác không thành công.' });
@@ -121,9 +126,11 @@ export default function UsersPage() {
   const openCreate = () => {
     setVisiblePasswords((state) => ({ ...state, create: false }));
     setDialogState({ mode: 'create', selected: null, createForm: getInitialCreate(), editForm: getInitialEdit(), newPassword: '' });
+    void loadAssignableRoles().catch(showError);
   };
 
   const openEdit = (item: UserRecord) => {
+    void loadAssignableRoles().catch(showError);
     setDialogState({
       mode: 'edit',
       selected: item,
@@ -171,7 +178,12 @@ export default function UsersPage() {
     if (!selected) return;
     setSubmitting(true);
     try {
-      await apiRequest(`/users/${selected.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
+      const payload = editingOwnAccount
+        ? Object.fromEntries(
+            Object.entries(editForm).filter(([key]) => key !== 'roleIds'),
+          )
+        : editForm;
+      await apiRequest(`/users/${selected.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       if (newPassword) {
         await apiRequest(`/users/${selected.id}/reset-password`, {
           method: 'POST',
@@ -222,7 +234,7 @@ export default function UsersPage() {
       <PageHeading
         eyebrow="Quản trị truy cập"
         title="Người dùng hệ thống"
-        description="Cấp tài khoản, gán vai trò và kiểm soát trạng thái truy cập. Mật khẩu chỉ được nhận ở biểu mẫu và không xuất hiện trong log."
+        description="Cấp tài khoản, gán vai trò và kiểm soát trạng thái truy cập trong doanh nghiệp đang chọn. Mật khẩu chỉ được nhận ở biểu mẫu và không xuất hiện trong log."
         actions={hasPermission(currentUser, PERMISSIONS.USERS_CREATE) ? <Button onClick={openCreate}><Plus size={16} /> Tạo người dùng</Button> : undefined}
       />
       {notice && <Notice tone={notice.tone}>{notice.message}</Notice>}
@@ -243,7 +255,7 @@ export default function UsersPage() {
             <thead><tr><th>Người dùng</th><th>Vai trò</th><th>Trạng thái</th><th>Lần đăng nhập cuối</th><th style={{ textAlign: 'right' }}>Thao tác</th></tr></thead>
             <tbody>
               {result.items.map((item) => {
-                const protectedAdmin = item.roles.some((role) => role.code === 'admin');
+                const protectedPlatformAdmin = item.isPlatformAdmin;
                 return (
                   <tr key={item.id}>
                     <td><span className="cell-main">{item.displayName}</span><span className="cell-sub">@{item.username}</span></td>
@@ -252,9 +264,9 @@ export default function UsersPage() {
                     <td>{item.lastLoginAt ? dateTimeFormatter.format(new Date(item.lastLoginAt)) : <span className="cell-sub">Chưa đăng nhập</span>}</td>
                     <td>
                       <div className="table-actions">
-                        {hasPermission(currentUser, PERMISSIONS.USERS_UPDATE) && !protectedAdmin && <button type="button" className="table-action" onClick={() => openEdit(item)} aria-label={`Sửa ${item.username}`}>{item.isActive ? <Pencil size={15} /> : <UserRoundCheck size={15} />}</button>}
-                        {hasPermission(currentUser, PERMISSIONS.USERS_RESET_PASSWORD) && !protectedAdmin && <button type="button" className="table-action" onClick={() => openReset(item)} aria-label={`Đặt lại mật khẩu ${item.username}`}><KeyRound size={15} /></button>}
-                        {hasPermission(currentUser, PERMISSIONS.USERS_DELETE) && !protectedAdmin && item.id !== currentUser?.id && <button type="button" className="table-action table-action-danger" onClick={() => void remove(item)} aria-label={`Xóa ${item.username}`}><Trash2 size={15} /></button>}
+                        {hasPermission(currentUser, PERMISSIONS.USERS_UPDATE) && !protectedPlatformAdmin && <button type="button" className="table-action" onClick={() => openEdit(item)} aria-label={`Sửa ${item.username}`}>{item.isActive ? <Pencil size={15} /> : <UserRoundCheck size={15} />}</button>}
+                        {hasPermission(currentUser, PERMISSIONS.USERS_RESET_PASSWORD) && !protectedPlatformAdmin && item.id !== currentUser?.id && <button type="button" className="table-action" onClick={() => openReset(item)} aria-label={`Đặt lại mật khẩu ${item.username}`}><KeyRound size={15} /></button>}
+                        {hasPermission(currentUser, PERMISSIONS.USERS_DELETE) && !protectedPlatformAdmin && item.id !== currentUser?.id && <button type="button" className="table-action table-action-danger" onClick={() => void remove(item)} aria-label={`Xóa ${item.username}`}><Trash2 size={15} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -390,10 +402,11 @@ export default function UsersPage() {
                 )}
                 <div className="form-field">
                   <label htmlFor="edit-role">Vai trò <span className="required-mark">*</span></label>
-                  <select id="edit-role" className="form-control" value={editForm.roleIds[0] ?? ''} onChange={(event) => setDialogState((state) => ({ ...state, editForm: { ...state.editForm, roleIds: event.target.value ? [event.target.value] : [] } }))} required>
+                  <select id="edit-role" className="form-control" value={editForm.roleIds[0] ?? ''} onChange={(event) => setDialogState((state) => ({ ...state, editForm: { ...state.editForm, roleIds: event.target.value ? [event.target.value] : [] } }))} disabled={editingOwnAccount} required>
                     <option value="">Chọn vai trò</option>
                     {roles.map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}
                   </select>
+                  {editingOwnAccount && <small className="form-hint">Bạn không thể tự thay đổi vai trò của chính mình.</small>}
                 </div>
                 <div className="form-field">
                   <label htmlFor="edit-joined-at">Ngày vào làm <span className="required-mark">*</span></label>

@@ -1,4 +1,5 @@
 import { AuthPayload } from '@/types/auth';
+import { demoDataForMissingGet, withDemoData } from './demo-data';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
 
@@ -49,12 +50,12 @@ async function refreshSession(): Promise<AuthPayload> {
     .then(parseResponse<AuthPayload>)
     .then((payload) => {
       setAccessToken(payload.accessToken);
-      window.dispatchEvent(new CustomEvent('dakrosa:session-refreshed', { detail: payload.user }));
+      window.dispatchEvent(new CustomEvent('enterprise-portal:session-refreshed', { detail: payload.user }));
       return payload;
     })
     .catch((error) => {
       setAccessToken(null);
-      window.dispatchEvent(new Event('dakrosa:session-expired'));
+      window.dispatchEvent(new Event('enterprise-portal:session-expired'));
       throw error;
     })
     .finally(() => {
@@ -81,7 +82,17 @@ export async function apiRequest<T>(
     await refreshSession();
     return apiRequest<T>(path, init, { ...options, retryUnauthorized: false });
   }
-  return parseResponse<T>(response);
+  try {
+    return withDemoData(path, await parseResponse<T>(response)) as T;
+  } catch (error) {
+    const isGetRequest = !init.method || init.method.toUpperCase() === 'GET';
+    const canUseMissingRouteDemo = error instanceof ApiError && error.status === 404;
+    const demo = isGetRequest && canUseMissingRouteDemo
+      ? demoDataForMissingGet(path)
+      : undefined;
+    if (demo !== undefined) return demo as T;
+    throw error;
+  }
 }
 
 export const authApi = {
@@ -92,6 +103,10 @@ export const authApi = {
       { auth: false, retryUnauthorized: false },
     ),
   restore: refreshSession,
+  switchTenant: (tenantSlug: string) =>
+    apiRequest<AuthPayload>('/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify({ tenantSlug }),
+    }),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }, { retryUnauthorized: false }),
 };
-

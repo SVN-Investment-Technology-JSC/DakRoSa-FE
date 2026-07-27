@@ -1,10 +1,16 @@
 import type { Metadata } from 'next';
+import '@fontsource-variable/nunito-sans';
+import '@fontsource-variable/literata';
 import { AuthProvider } from '@/providers/auth-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'ĐăkRơSa Operations', template: '%s | ĐăkRơSa' },
-  description: 'Nền tảng quản lý dữ liệu và quy trình vận hành Nhà máy Thủy điện ĐăkRơSa.',
+  title: {
+    default: 'Nền tảng Quản trị Doanh nghiệp',
+    template: '%s | Nền tảng Quản trị Doanh nghiệp',
+  },
+  description:
+    'Nền tảng quản trị doanh nghiệp đa đơn vị, sẵn sàng mở rộng cho các nhà máy.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -16,4 +22,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

@@ -4,6 +4,7 @@ export interface UserRecord {
   id: string;
   username: string;
   displayName: string;
+  isPlatformAdmin: boolean;
   shortName: string | null;
   email: string;
   phone: string;
@@ -14,5 +15,8 @@ export interface UserRecord {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  tenantId: string;
+  tenantName: string;
+  tenantShortName: string;
   roles: Role[];
 }
