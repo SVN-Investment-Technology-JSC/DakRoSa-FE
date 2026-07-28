@@ -34,7 +34,7 @@ const capabilities = [
 export default function LoginPage() {
   return (
     <main className="grid min-h-svh bg-[#F7FAF4] lg:grid-cols-[minmax(0,1.05fr)_minmax(440px,.95fr)]">
-      <section className="relative hidden overflow-hidden bg-[#386948] px-10 py-8 text-white lg:flex lg:flex-col xl:px-16 xl:py-12">
+      <section className="relative hidden overflow-hidden bg-[#163B66] px-10 py-8 text-white lg:flex lg:flex-col xl:px-16 xl:py-12">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_10%,rgba(185,239,197,0.18),transparent_30%),linear-gradient(145deg,rgba(255,255,255,0.04),transparent_58%)]" />
         <div className="pointer-events-none absolute -right-36 -bottom-40 size-[30rem] rounded-full border-[60px] border-white/[0.035]" />
         <BrandMark className="relative z-10 w-[290px]" priority />

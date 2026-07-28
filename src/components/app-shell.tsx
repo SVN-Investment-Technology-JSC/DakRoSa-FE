@@ -32,7 +32,10 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
+import { Button } from './ui/button';
 import { BrandMark } from './brand-mark';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Skeleton } from './ui/skeleton';
 
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
@@ -67,6 +70,31 @@ function tenantSlugFromPath(pathname: string): string | null {
   return pathname.match(/^\/t\/([^/]+)/)?.[1] ?? null;
 }
 
+function TenantContentSkeleton() {
+  return (
+    <section
+      className="grid gap-6"
+      role="status"
+      aria-label="Đang tải dữ liệu doanh nghiệp"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="grid flex-1 gap-2">
+          <Skeleton className="h-7 w-52 max-w-full" />
+          <Skeleton className="h-4 w-80 max-w-full" />
+        </div>
+        <Skeleton className="hidden h-10 w-32 sm:block" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-32 w-full" />
+        ))}
+      </div>
+      <Skeleton className="h-72 w-full" />
+      <span className="sr-only">Đang chuyển không gian doanh nghiệp…</span>
+    </section>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, status, switchTenant, logout } = useAuth();
   const router = useRouter();
@@ -74,6 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<ReadonlySet<string>>(() => new Set());
   const [switchError, setSwitchError] = useState('');
+  const [pendingTenantSlug, setPendingTenantSlug] = useState<string | null>(null);
   const routeTenantSlug = tenantSlugFromPath(pathname);
 
   const visibleItems = useMemo(
@@ -107,19 +136,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       !user ||
       !routeTenantSlug ||
       !tenantMismatch ||
-      tenantAccessDenied
+      tenantAccessDenied ||
+      pendingTenantSlug
     )
       return;
+    setPendingTenantSlug(routeTenantSlug);
+    setSwitchError('');
     void switchTenant(routeTenantSlug).catch(() => {
       setSwitchError('Không thể chuyển không gian doanh nghiệp.');
+      setPendingTenantSlug(null);
     });
   }, [
+    pendingTenantSlug,
     routeTenantSlug,
     switchTenant,
     tenantAccessDenied,
     tenantMismatch,
     user,
   ]);
+
+  useEffect(() => {
+    if (
+      pendingTenantSlug &&
+      routeTenantSlug === pendingTenantSlug &&
+      user?.activeTenant.slug === pendingTenantSlug
+    ) {
+      setPendingTenantSlug(null);
+    }
+  }, [pendingTenantSlug, routeTenantSlug, user?.activeTenant.slug]);
 
   if (status === 'unauthenticated') redirect('/login');
   if (
@@ -133,8 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (
     status === 'loading' ||
     !user ||
-    !pageAllowed ||
-    (tenantMismatch && !switchError)
+    !pageAllowed
   ) {
     return (
       <main className="grid min-h-svh place-content-center justify-items-center gap-5 bg-[#F7FAF4] px-6 text-[#59615A]">
@@ -142,11 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="h-1 w-44 overflow-hidden rounded-full bg-[#DCE6DA]">
           <span className="block h-full w-2/3 animate-pulse rounded-full bg-[#386948]" />
         </div>
-        <p className="text-sm font-bold">
-          {tenantMismatch
-            ? 'Đang chuyển không gian doanh nghiệp…'
-            : 'Đang khôi phục phiên làm việc an toàn…'}
-        </p>
+        <p className="text-sm font-bold">Đang khôi phục phiên làm việc an toàn…</p>
       </main>
     );
   }
@@ -155,17 +194,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     await logout();
   };
 
-  const handleTenantChange = async (
-    event: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const slug = event.target.value;
-    if (slug === user.activeTenant.slug) return;
+  const handleTenantChange = async (slug: string) => {
+    if (slug === user.activeTenant.slug || pendingTenantSlug) return;
     setSwitchError('');
+    setPendingTenantSlug(slug);
     try {
       const nextUser = await switchTenant(slug);
-      router.push(tenantPath(nextUser.activeTenant.slug, '/dashboard'));
+      router.replace(tenantPath(nextUser.activeTenant.slug, '/dashboard'));
     } catch {
       setSwitchError('Không thể chuyển không gian doanh nghiệp.');
+      setPendingTenantSlug(null);
     }
   };
 
@@ -177,12 +215,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }));
 
   const ungroupedItems = visibleItems.filter((item) => !item.group);
+  const isTenantSwitching =
+    Boolean(pendingTenantSlug) || (tenantMismatch && !switchError);
+  const brandStyle = user.isPlatformAdmin
+    ? undefined
+    : ({
+      '--primary': user.activeTenant.primaryColor,
+      '--secondary-foreground': user.activeTenant.primaryColor,
+      '--ring': user.activeTenant.primaryColor,
+    } as React.CSSProperties);
 
   return (
-    <div className="min-h-svh bg-[#F7FAF4] text-[#2C342E]">
+    <div className="min-h-svh bg-[#F7FAF4] text-[#2C342E]" style={brandStyle}>
       {mobileOpen && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           className="fixed inset-0 z-40 bg-[#17251C]/45 backdrop-blur-sm lg:hidden"
           aria-label="Đóng menu"
           onClick={() => setMobileOpen(false)}
@@ -190,43 +238,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-white/10 bg-[#386948] px-4 py-4 text-white shadow-[14px_0_40px_rgba(35,63,44,0.12)] transition-transform duration-200 lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-white/10 bg-primary px-4 py-4 text-white shadow-[14px_0_40px_rgba(35,63,44,0.12)] transition-transform duration-200 lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <div className="flex items-center gap-2">
-          <BrandMark className="min-w-0 flex-1" priority />
-          <button
+          <BrandMark
+            className="min-w-0 flex-1"
+            priority
+            logoUrl={user.isPlatformAdmin ? '/logo-blue.png' : user.activeTenant.logoUrl}
+            fallbackText={user.activeTenant.shortName}
+            alt={user.isPlatformAdmin ? 'Nhận diện nền tảng' : user.activeTenant.name}
+          />
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             className="grid size-10 shrink-0 place-items-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
             onClick={() => setMobileOpen(false)}
             aria-label="Đóng menu"
           >
             <X size={20} />
-          </button>
+          </Button>
         </div>
 
         <div className="relative mt-4">
           <Building2
             size={17}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[#B9EFC5]"
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/70"
           />
-          <select
-            aria-label="Chọn doanh nghiệp"
-            value={user.activeTenant.slug}
-            onChange={handleTenantChange}
-            className="h-12 w-full appearance-none rounded-xl border border-white/12 bg-white/8 pr-9 pl-10 text-sm font-bold text-white outline-none transition focus:border-[#B9EFC5]/70 focus:ring-3 focus:ring-[#B9EFC5]/15"
+          <Select
+            disabled={isTenantSwitching}
+            value={pendingTenantSlug ?? user.activeTenant.slug}
+            onValueChange={(slug) => void handleTenantChange(slug)}
           >
-            {user.tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.slug} className="text-black">
-                {tenant.shortName}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={16}
-            className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-white/55"
-          />
+            <SelectTrigger aria-label="Chọn doanh nghiệp" className="h-12 w-full border-white/12 bg-white/8 pl-10 text-sm font-bold text-white focus:ring-white/20 [&_svg]:text-white/55"><SelectValue /></SelectTrigger>
+            <SelectContent position="popper">{user.tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.slug}>{tenant.shortName}</SelectItem>)}</SelectContent>
+          </Select>
         </div>
 
         {switchError && (
@@ -272,7 +320,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           className={cn(
                             'group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold text-white/72 transition',
                             active
-                              ? 'bg-[#E8F3E8] text-[#2B5D3C] shadow-sm ring-1 ring-[#B9EFC5]/70'
+                              ? 'bg-white text-primary shadow-sm ring-1 ring-white/70'
                               : 'hover:bg-white/10 hover:text-white',
                           )}
                           onClick={() => setMobileOpen(false)}
@@ -282,15 +330,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             {item.label}
                           </span>
                           {item.children ? (
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               onClick={toggleExpanded}
                               className="p-1 rounded hover:bg-black/10"
                               aria-label={`Mở danh sách ${item.label}`}
                               aria-expanded={expanded}
                             >
                               <ChevronDown size={16} className={expanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
-                            </button>
+                            </Button>
                           ) : active ? (
                             <ChevronRight size={16} />
                           ) : null}
@@ -351,7 +401,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         className={cn(
                           'group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold text-white/72 transition',
                           active
-                            ? 'bg-[#E8F3E8] text-[#2B5D3C] shadow-sm ring-1 ring-[#B9EFC5]/70'
+                            ? 'bg-white text-primary shadow-sm ring-1 ring-white/70'
                             : 'hover:bg-white/10 hover:text-white',
                         )}
                         onClick={() => setMobileOpen(false)}
@@ -361,15 +411,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           {item.label}
                         </span>
                         {item.children ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={toggleExpanded}
                             className="p-1 rounded hover:bg-black/10"
                             aria-label={`Mở danh sách ${item.label}`}
                             aria-expanded={expanded}
                           >
                             <ChevronDown size={16} className={expanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
-                          </button>
+                          </Button>
                         ) : active ? (
                           <ChevronRight size={16} />
                         ) : null}
@@ -415,7 +467,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="border-t border-white/12 pt-4">
           <div className="flex items-center gap-3 rounded-xl bg-black/8 p-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#B9EFC5] text-sm font-black text-[#2B5D3C]">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-sm font-black text-primary">
               {user.displayName.slice(0, 1).toUpperCase()}
             </span>
             <div className="min-w-0 flex-1">
@@ -426,28 +478,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 @{user.username}
               </span>
             </div>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               className="grid size-9 shrink-0 place-items-center rounded-lg text-white/58 hover:bg-white/10 hover:text-white"
               onClick={handleLogout}
               aria-label="Đăng xuất"
             >
               <LogOut size={18} />
-            </button>
+            </Button>
           </div>
         </div>
       </aside>
 
       <div className="min-h-svh lg:pl-[272px]">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-[#DDE5DC] bg-white/92 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             className="grid size-10 place-items-center rounded-lg border border-[#DDE5DC] bg-white text-[#59615A] lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Mở menu"
           >
             <Menu size={21} />
-          </button>
+          </Button>
           <div className="min-w-0 flex-1">
             <span className="block truncate text-xs font-bold tracking-[0.08em] text-[#758077] uppercase">
               {user.activeTenant.shortName}
@@ -456,16 +512,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {activeChild?.label ?? activeItem?.label ?? 'Không gian doanh nghiệp'}
             </strong>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             className="relative grid size-10 place-items-center rounded-xl border border-[#DDE5DC] bg-white text-[#59615A] hover:bg-[#F0F5EE]"
             aria-label="Thông báo"
           >
             <Bell size={19} />
-          </button>
+          </Button>
         </header>
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          {children}
+        <main
+          className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+          aria-busy={isTenantSwitching}
+        >
+          {isTenantSwitching ? <TenantContentSkeleton /> : children}
         </main>
       </div>
     </div>

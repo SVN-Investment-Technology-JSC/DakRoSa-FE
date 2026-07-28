@@ -10,9 +10,9 @@ import {
 } from '@/components/e-office/submission-badges';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
-import { NativeSelect } from '@/components/ui/native-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -22,10 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { apiRequest, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { tenantPath } from '@/lib/navigation';
-import { SubmissionList, SubmissionStatus } from '@/types/e-office';
+import { ApiError } from '@/services/service-error';
+import { eOfficeService } from '@/services/e-office.service';
+import type { SubmissionList, SubmissionStatus } from '@/types/e-office';
 
 export default function SubmissionsPage() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
@@ -36,14 +37,7 @@ export default function SubmissionsPage() {
   const [error, setError] = useState('');
 
   const fetchSubmissions = useCallback(
-    (nextSearch = '', nextStatus = '') => {
-    const query = new URLSearchParams({ page: '1', limit: '50' });
-    if (nextSearch.trim()) query.set('search', nextSearch.trim());
-    if (nextStatus) query.set('status', nextStatus);
-      return apiRequest<SubmissionList>(
-        `/e-office/submissions?${query.toString()}`,
-      );
-    },
+    (nextSearch = '', nextStatus = '') => eOfficeService.getSubmissions({ search: nextSearch, status: nextStatus }),
     [],
   );
 
@@ -123,19 +117,17 @@ export default function SubmissionsPage() {
             className="pl-10"
           />
         </div>
-        <NativeSelect
-          value={status}
-          onChange={(event) =>
-            setStatus(event.target.value as SubmissionStatus | '')
-          }
-        >
-          <option value="">Tất cả trạng thái</option>
-          <option value="draft">Bản nháp</option>
-          <option value="in_review">Chờ duyệt</option>
-          <option value="returned">Đã trả lại</option>
-          <option value="approved">Đã phê duyệt</option>
-          <option value="cancelled">Đã hủy</option>
-        </NativeSelect>
+        <Select value={status || 'all'} onValueChange={(value) => setStatus(value === 'all' ? '' : value as SubmissionStatus)}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Tất cả trạng thái" /></SelectTrigger>
+          <SelectContent position="popper">
+            <SelectItem value="all">Tất cả trạng thái</SelectItem>
+            <SelectItem value="draft">Bản nháp</SelectItem>
+            <SelectItem value="in_review">Chờ duyệt</SelectItem>
+            <SelectItem value="returned">Đã trả lại</SelectItem>
+            <SelectItem value="approved">Đã phê duyệt</SelectItem>
+            <SelectItem value="cancelled">Đã hủy</SelectItem>
+          </SelectContent>
+        </Select>
         <Button type="submit" variant="secondary" disabled={loading}>
           Lọc dữ liệu
         </Button>
@@ -155,10 +147,9 @@ export default function SubmissionsPage() {
             ))}
           </div>
         ) : !result?.items.length ? (
-          <EmptyState
-            title="Chưa có hồ sơ phù hợp"
-            description="Thay đổi điều kiện lọc hoặc tạo hồ sơ đầu tiên cho doanh nghiệp."
-            action={
+          <Empty>
+            <EmptyHeader><EmptyTitle>Chưa có hồ sơ phù hợp</EmptyTitle><EmptyDescription>Thay đổi điều kiện lọc hoặc tạo hồ sơ đầu tiên cho doanh nghiệp.</EmptyDescription></EmptyHeader>
+            <EmptyContent>
               <Button asChild size="sm">
                 <Link
                   href={tenantPath(
@@ -169,8 +160,8 @@ export default function SubmissionsPage() {
                   <Plus size={16} /> Tạo hồ sơ
                 </Link>
               </Button>
-            }
-          />
+            </EmptyContent>
+          </Empty>
         ) : (
           <>
             <Table>
@@ -211,7 +202,7 @@ export default function SubmissionsPage() {
                           tenantSlug,
                           `/e-office/submissions/${item.id}`,
                         )}
-                        className="inline-grid size-9 place-items-center rounded-lg text-[#386948] hover:bg-[#EAF3E8]"
+                        className="inline-grid size-9 place-items-center rounded-lg text-primary hover:bg-primary/10"
                         aria-label={`Mở hồ sơ ${item.code}`}
                       >
                         <ArrowRight size={18} />

@@ -22,27 +22,12 @@ import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { apiRequest, ApiError } from '@/lib/api';
 import { tenantPath } from '@/lib/navigation';
-import { SubmissionSummary } from '@/types/e-office';
-
-interface PlatformSummary {
-  users: number;
-  activeUsers: number;
-}
-
-interface WorkItem {
-  id: string;
-  code: string;
-  title: string;
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  dueAt: string | null;
-}
-
-interface WorkItemsResponse {
-  items: WorkItem[];
-  total: number;
-}
+import { ApiError } from '@/services/service-error';
+import { dashboardService } from '@/services/dashboard.service';
+import { eOfficeService } from '@/services/e-office.service';
+import type { DashboardSummary } from '@/types/dashboard';
+import type { SubmissionList, SubmissionSummary } from '@/types/e-office';
 
 // Temporary dashboard data for the Giai đoạn 3 demonstration. Replace each
 // value with its dedicated API response as the HRM, planning, KPI and project
@@ -123,17 +108,17 @@ function DataPending({ label, icon: Icon, detail, value }: {
 
 export default function TenantDashboardPage() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
-  const [platform, setPlatform] = useState<PlatformSummary | null>(null);
+  const [platform, setPlatform] = useState<DashboardSummary | null>(null);
   const [office, setOffice] = useState<SubmissionSummary | null>(null);
-  const [workItems, setWorkItems] = useState<WorkItemsResponse | null>(null);
+  const [workItems, setWorkItems] = useState<SubmissionList | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     void Promise.allSettled([
-      apiRequest<PlatformSummary>('/dashboard/summary'),
-      apiRequest<SubmissionSummary>('/e-office/summary'),
-      apiRequest<WorkItemsResponse>('/e-office/work-items'),
+      dashboardService.getSummary(),
+      eOfficeService.getSummary(),
+      eOfficeService.getWorkItems(),
     ]).then((results) => {
       if (!active) return;
       const [platformResult, officeResult, workItemsResult] = results;
@@ -228,7 +213,7 @@ export default function TenantDashboardPage() {
                 <CardTitle className="font-display text-lg">Điều hành công việc và hồ sơ</CardTitle>
                 <p className="mt-1 text-sm text-[#667067]">Tình trạng thực tế của luồng công việc điện tử.</p>
               </div>
-              <ClipboardList size={20} className="text-[#386948]" />
+              <ClipboardList size={20} className="text-primary" />
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 p-5 sm:grid-cols-3">
@@ -238,7 +223,7 @@ export default function TenantDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="gap-0 overflow-hidden rounded-xl border-0 bg-[#386948] text-white shadow-[0_18px_42px_rgba(56,105,72,0.18)]">
+        <Card className="gap-0 overflow-hidden rounded-xl border-0 bg-primary text-white shadow-[0_18px_42px_color-mix(in_srgb,var(--primary)_30%,transparent)]">
           <CardHeader className="px-6 pt-6">
             <span className="mb-2 w-fit rounded-full bg-[#B9EFC5] px-3 py-1 text-xs font-black text-[#2B5D3C]">Tiến độ thực hiện</span>
             <strong className="font-display block text-4xl">{completionRate ?? '—'}{completionRate !== undefined ? '%' : ''}</strong>

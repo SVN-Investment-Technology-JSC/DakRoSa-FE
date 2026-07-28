@@ -124,17 +124,17 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Trigger Coolify deployment
-        if: github.ref == 'refs/heads/dev/release' && env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
-        run: >-
-          curl --fail-with-body --silent --show-error
-          --retry 2 --retry-all-errors
-          --request GET "$COOLIFY_WEBHOOK"
-          --header "Authorization: Bearer $COOLIFY_TOKEN"
+      # - name: Trigger Coolify deployment
+      #   if: github.ref == 'refs/heads/dev/release' && env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
+      #   run: >-
+      #     curl --fail-with-body --silent --show-error
+      #     --retry 2 --retry-all-errors
+      #     --request GET "$COOLIFY_WEBHOOK"
+      #     --header "Authorization: Bearer $COOLIFY_TOKEN"
 
-      - name: Report skipped Coolify deployment
-        if: github.ref == 'refs/heads/dev/release' && (env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == '')
-        run: echo "Image published; Coolify deployment skipped because repository secrets are not configured."
+      # - name: Report skipped Coolify deployment
+      #   if: github.ref == 'refs/heads/dev/release' && (env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == '')
+      #   run: echo "Image published; Coolify deployment skipped because repository secrets are not configured."
 
       - name: Report deferred production deployment
         if: github.ref == 'refs/heads/main'

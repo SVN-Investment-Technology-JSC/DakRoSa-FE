@@ -2,43 +2,23 @@
 
 import { Building2, Plus, Save } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Notice } from '@/components/ui/notice';
-import { apiRequest } from '@/lib/api';
-
-type Tenant = {
-  id: string;
-  name: string;
-  shortName: string;
-  code: string;
-  slug: string;
-  primaryColor: string;
-  locale: string;
-  timezone: string;
-};
-
-type Site = {
-  id: string;
-  code: string;
-  name: string;
-  address: string | null;
-  isActive: boolean;
-};
-
-type Bootstrap = { tenant: Tenant; sites: Site[] };
+import { tenancyService } from '@/services/tenancy.service';
+import type { Site, TenancyBootstrap } from '@/types/tenancy';
 
 export default function TenantSettingsPage() {
-  const [data, setData] = useState<Bootstrap | null>(null);
+  const [data, setData] = useState<TenancyBootstrap | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadSettings = async () => {
     try {
-      setData(await apiRequest<Bootstrap>('/tenancy/settings'));
+      setData(await tenancyService.getSettings());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không thể tải cấu hình.');
     }
@@ -46,13 +26,16 @@ export default function TenantSettingsPage() {
 
   useEffect(() => {
     let active = true;
-    apiRequest<Bootstrap>('/tenancy/settings')
+    tenancyService.getSettings()
       .then((settings) => { if (active) setData(settings); })
       .catch((loadError: unknown) => {
         if (active) setError(loadError instanceof Error ? loadError.message : 'Không thể tải cấu hình.');
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => { if (message) toast.success(message); }, [message]);
+  useEffect(() => { if (error) toast.error(error); }, [error]);
 
   const saveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,15 +44,12 @@ export default function TenantSettingsPage() {
     setMessage('');
     setError('');
     try {
-      await apiRequest('/tenancy/settings', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          name: form.get('name'),
-          shortName: form.get('shortName'),
-          primaryColor: form.get('primaryColor'),
-          locale: form.get('locale'),
-          timezone: form.get('timezone'),
-        }),
+      await tenancyService.updateSettings({
+        name: String(form.get('name') ?? ''),
+        shortName: String(form.get('shortName') ?? ''),
+        primaryColor: String(form.get('primaryColor') ?? ''),
+        locale: String(form.get('locale') ?? ''),
+        timezone: String(form.get('timezone') ?? ''),
       });
       setMessage('Đã lưu cấu hình doanh nghiệp.');
       await loadSettings();
@@ -82,18 +62,16 @@ export default function TenantSettingsPage() {
 
   const createSite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setError('');
     try {
-      await apiRequest('/tenancy/sites', {
-        method: 'POST',
-        body: JSON.stringify({
-          code: form.get('code'),
-          name: form.get('name'),
-          address: form.get('address') || undefined,
-        }),
+      await tenancyService.createSite({
+        code: String(form.get('code') ?? ''),
+        name: String(form.get('name') ?? ''),
+        address: String(form.get('address') ?? '') || undefined,
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage('Đã thêm nhà máy/địa điểm.');
       await loadSettings();
     } catch (siteError) {
@@ -103,10 +81,7 @@ export default function TenantSettingsPage() {
 
   const toggleSite = async (site: Site) => {
     try {
-      await apiRequest(`/tenancy/sites/${site.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ isActive: !site.isActive }),
-      });
+      await tenancyService.setSiteActive(site.id, !site.isActive);
       await loadSettings();
     } catch (siteError) {
       setError(siteError instanceof Error ? siteError.message : 'Không thể cập nhật địa điểm.');
@@ -152,8 +127,6 @@ export default function TenantSettingsPage() {
       <Card className="mt-6">
         <CardHeader><CardTitle>Nhà máy và địa điểm vận hành</CardTitle></CardHeader>
         <CardContent>
-          {message && <Notice tone="success">{message}</Notice>}
-          {error && <Notice tone="error">{error}</Notice>}
           <form className="mt-4 grid gap-3 md:grid-cols-[150px_1fr_1fr_auto]" onSubmit={createSite}>
             <Input name="code" placeholder="Mã địa điểm" required />
             <Input name="name" placeholder="Tên nhà máy/địa điểm" required />

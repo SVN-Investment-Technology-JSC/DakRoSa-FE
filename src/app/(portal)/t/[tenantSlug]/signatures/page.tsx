@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { PageHeading } from '@/components/page-heading';
 import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -16,10 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { apiRequest, ApiError } from '@/lib/api';
+import { ApiError } from '@/services/service-error';
+import { signaturesService } from '@/services/signatures.service';
 import { formatDateTime } from '@/lib/format';
 import { tenantPath } from '@/lib/navigation';
-import { SignatureRequest, SignatureStatus } from '@/types/e-office';
+import type { SignatureRequest, SignatureStatus } from '@/types/e-office';
 
 const signatureLabels: Record<SignatureStatus, string> = {
   pending: 'Chờ cấu hình',
@@ -30,9 +31,9 @@ const signatureLabels: Record<SignatureStatus, string> = {
 };
 
 const signatureVariants = {
-  pending: 'warning',
+  pending: 'secondary',
   processing: 'default',
-  completed: 'success',
+  completed: 'default',
   failed: 'destructive',
   cancelled: 'outline',
 } as const;
@@ -44,7 +45,7 @@ export default function SignaturesPage() {
 
   useEffect(() => {
     let active = true;
-    void apiRequest<SignatureRequest[]>('/signatures')
+    void signaturesService.getRequests()
       .then((items) => {
         if (active) setRequests(items);
       })
@@ -81,10 +82,7 @@ export default function SignaturesPage() {
             ))}
           </div>
         ) : requests.length === 0 ? (
-          <EmptyState
-            title="Chưa có yêu cầu ký số"
-            description="Yêu cầu sẽ xuất hiện sau khi hồ sơ được phê duyệt và chuyển sang bước ký số."
-          />
+          <Empty><EmptyHeader><EmptyTitle>Chưa có yêu cầu ký số</EmptyTitle><EmptyDescription>Yêu cầu sẽ xuất hiện sau khi hồ sơ được phê duyệt và chuyển sang bước ký số.</EmptyDescription></EmptyHeader></Empty>
         ) : (
           <Table>
             <TableHeader>
@@ -103,7 +101,7 @@ export default function SignaturesPage() {
                 <TableRow key={request.id}>
                   <TableCell>
                     <div className="flex items-start gap-3">
-                      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-[#E8F3E8] text-[#386948]">
+                      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                         <FileCheck2 size={17} />
                       </span>
                       <div>
@@ -135,7 +133,7 @@ export default function SignaturesPage() {
                         tenantSlug,
                         `/e-office/submissions/${request.submissionId}`,
                       )}
-                      className="inline-grid size-9 place-items-center rounded-lg text-[#386948] hover:bg-[#EAF3E8]"
+                      className="inline-grid size-9 place-items-center rounded-lg text-primary hover:bg-primary/10"
                       aria-label={`Mở hồ sơ ${request.submission.code}`}
                     >
                       <ArrowRight size={18} />
