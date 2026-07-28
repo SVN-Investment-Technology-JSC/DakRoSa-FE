@@ -2,11 +2,14 @@
 
 import {
   BriefcaseBusiness,
+  CalendarClock,
+  ClipboardList,
   FileCheck2,
   Files,
   LayoutDashboard,
   ListTodo,
   Network,
+  Package,
   Plus,
   RadioTower,
   Save,
@@ -26,7 +29,6 @@ import { navigationConfig, NavigationIcon, PERMISSIONS } from '@/lib/navigation'
 import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 import { Role } from '@/types/rbac';
-
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
   'work-items': ListTodo,
@@ -39,6 +41,10 @@ const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   organization: Network,
   eoffice: BriefcaseBusiness,
   operations: RadioTower,
+  equipment: Settings2,
+  inventory: Package,
+  work_order: ClipboardList,
+  maintenance: CalendarClock,
 };
 
 export default function RolesPage() {

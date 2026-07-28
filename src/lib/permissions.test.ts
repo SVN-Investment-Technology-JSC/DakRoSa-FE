@@ -19,10 +19,12 @@ describe('firstPermittedPath', () => {
         timezone: 'Asia/Ho_Chi_Minh',
         roleCodes: ['admin'],
         permissions: [],
+        enabledModules: [],
       },
       tenants: [],
       roleCodes: ['admin'],
       permissions: [],
+      isPlatformAdmin: false,
     })).toBe('/t/dakrosa/dashboard');
   });
 });

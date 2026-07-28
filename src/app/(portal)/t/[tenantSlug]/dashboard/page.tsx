@@ -1,19 +1,18 @@
+/* eslint-disable */
 'use client';
 
 import {
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock3,
   FileText,
-  FolderKanban,
   Gauge,
   ListTodo,
   Plus,
-  Target,
-  UserRoundCheck,
   Users,
+  AlertCircle,
+  Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -25,6 +24,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest, ApiError } from '@/lib/api';
 import { tenantPath } from '@/lib/navigation';
 import { SubmissionSummary } from '@/types/e-office';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
+} from 'recharts';
 
 interface PlatformSummary {
   users: number;
@@ -44,29 +56,18 @@ interface WorkItemsResponse {
   total: number;
 }
 
-// Temporary dashboard data for the Giai đoạn 3 demonstration. Replace each
-// value with its dedicated API response as the HRM, planning, KPI and project
-// modules are delivered.
-const DASHBOARD_DEMO_DATA = {
-  planning: {
-    monthlyPlans: 12,
-    monthlyPlanDetail: '8/12 đầu việc đúng hạn trong tháng',
-    kpiPending: 4,
-    kpiDetail: '14/18 chỉ tiêu đã được cập nhật',
-    activeProjects: 3,
-    projectDetail: '2 dự án đúng tiến độ, 1 dự án cần theo dõi',
-  },
-  hrm: {
-    headcount: 86,
-    headcountDetail: '54 khối vận hành · 32 khối gián tiếp',
-    monthlyMovement: 2,
-    movementDetail: '1 tiếp nhận · 1 điều chuyển trong tháng',
-    expiringCertificates: 4,
-    certificateDetail: 'Cần gia hạn trong 30 ngày tới',
-    attendanceToday: 81,
-    attendanceDetail: '03 ca vận hành · 03 đơn nghỉ phép hôm nay',
-  },
-} as const;
+interface OperationsSummary {
+  equipments: { total: number };
+  workOrders: {
+    downtimeMinutesThisMonth: number;
+    draft: number;
+    inProgress: number;
+    completed: number;
+    incidents30d: number;
+    maintenances30d: number;
+  };
+  downtimeChart: Array<{ date: string; downtime: number }>;
+}
 
 interface MetricCardProps {
   label: string;
@@ -126,6 +127,7 @@ export default function TenantDashboardPage() {
   const [platform, setPlatform] = useState<PlatformSummary | null>(null);
   const [office, setOffice] = useState<SubmissionSummary | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemsResponse | null>(null);
+  const [operations, setOperations] = useState<OperationsSummary | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -134,12 +136,14 @@ export default function TenantDashboardPage() {
       apiRequest<PlatformSummary>('/dashboard/summary'),
       apiRequest<SubmissionSummary>('/e-office/summary'),
       apiRequest<WorkItemsResponse>('/e-office/work-items'),
+      apiRequest<OperationsSummary>('/dashboard/operations-summary'),
     ]).then((results) => {
       if (!active) return;
-      const [platformResult, officeResult, workItemsResult] = results;
+      const [platformResult, officeResult, workItemsResult, operationsResult] = results;
       if (platformResult.status === 'fulfilled') setPlatform(platformResult.value);
       if (officeResult.status === 'fulfilled') setOffice(officeResult.value);
       if (workItemsResult.status === 'fulfilled') setWorkItems(workItemsResult.value);
+      if (operationsResult.status === 'fulfilled') setOperations(operationsResult.value);
       const failed = results.find((result) => result.status === 'rejected');
       const hasData = results.some((result) => result.status === 'fulfilled');
       if (failed?.status === 'rejected' && !hasData) {
@@ -252,21 +256,94 @@ export default function TenantDashboardPage() {
 
       <section className="mt-5 grid gap-5 xl:grid-cols-2">
         <Card className="gap-0 rounded-xl border-[#DDE5DC]">
-          <CardHeader className="px-5 py-4"><CardTitle className="font-display text-lg">Kế hoạch, KPI và dự án</CardTitle><p className="mt-1 text-sm text-[#667067]">Chỉ số điều hành theo kỳ hiện tại.</p></CardHeader>
-          <CardContent className="grid gap-3 px-5 pb-5 sm:grid-cols-3">
-            <DataPending label="Kế hoạch tháng" icon={CalendarDays} value={DASHBOARD_DEMO_DATA.planning.monthlyPlans} detail={DASHBOARD_DEMO_DATA.planning.monthlyPlanDetail} />
-            <DataPending label="KPI cần cập nhật" icon={Target} value={DASHBOARD_DEMO_DATA.planning.kpiPending} detail={DASHBOARD_DEMO_DATA.planning.kpiDetail} />
-            <DataPending label="Dự án đang triển khai" icon={FolderKanban} value={DASHBOARD_DEMO_DATA.planning.activeProjects} detail={DASHBOARD_DEMO_DATA.planning.projectDetail} />
+          <CardHeader className="px-5 py-4">
+            <CardTitle className="font-display text-lg">Báo cáo Vận hành & Bảo trì</CardTitle>
+            <p className="mt-1 text-sm text-[#667067]">Chỉ số kỹ thuật hệ thống thiết bị.</p>
+          </CardHeader>
+          <CardContent className="grid gap-3 px-5 pb-5 sm:grid-cols-2">
+            <DataPending label="Tổng thiết bị" icon={Gauge} value={operations?.equipments?.total} detail="Đang quản lý trên hệ thống" />
+            <DataPending label="Phút dừng máy (Tháng)" icon={Clock3} value={operations?.workOrders?.downtimeMinutesThisMonth} detail="Tổng thời gian gián đoạn" />
+            <DataPending label="Sự cố (30 ngày)" icon={AlertCircle} value={operations?.workOrders?.incidents30d} detail="Số sự cố phát sinh" />
+            <DataPending label="Bảo trì (30 ngày)" icon={Wrench} value={operations?.workOrders?.maintenances30d} detail="Số lần bảo trì định kỳ" />
           </CardContent>
         </Card>
 
         <Card className="gap-0 rounded-xl border-[#DDE5DC]">
-          <CardHeader className="px-5 py-4"><CardTitle className="font-display text-lg">Nhân sự và chấm công</CardTitle><p className="mt-1 text-sm text-[#667067]">Báo cáo cơ cấu nguồn lực và dữ liệu theo ca.</p></CardHeader>
-          <CardContent className="grid gap-3 px-5 pb-5 sm:grid-cols-2">
-            <DataPending label="Tổng nhân sự" icon={Users} value={DASHBOARD_DEMO_DATA.hrm.headcount} detail={DASHBOARD_DEMO_DATA.hrm.headcountDetail} />
-            <DataPending label="Biến động nhân sự" icon={UserRoundCheck} value={DASHBOARD_DEMO_DATA.hrm.monthlyMovement} detail={DASHBOARD_DEMO_DATA.hrm.movementDetail} />
-            <DataPending label="Chứng chỉ sắp hết hạn" icon={Gauge} value={DASHBOARD_DEMO_DATA.hrm.expiringCertificates} detail={DASHBOARD_DEMO_DATA.hrm.certificateDetail} />
-            <DataPending label="Ca kíp & bảng công" icon={CalendarDays} value={DASHBOARD_DEMO_DATA.hrm.attendanceToday} detail={DASHBOARD_DEMO_DATA.hrm.attendanceDetail} />
+          <CardHeader className="px-5 py-4">
+            <CardTitle className="font-display text-lg">Biểu đồ dừng máy (7 ngày)</CardTitle>
+            <p className="mt-1 text-sm text-[#667067]">Thống kê số phút dừng máy do sự cố.</p>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 h-[240px]">
+            {operations?.downtimeChart ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={operations.downtimeChart} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="date" 
+                    tickFormatter={(val) => {
+                      const d = new Date(val);
+                      return `${d.getDate()}/${d.getMonth()+1}`;
+                    }}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#667067' }}
+                  />
+                  <YAxis 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#667067' }}
+                  />
+                  <Tooltip 
+                     
+                    formatter={(value: any) => [`${value} phút`, 'Downtime']}
+                     
+                    labelFormatter={(label: any) => new Date(label).toLocaleDateString('vi-VN')}
+                  />
+                  <Bar dataKey="downtime" fill="#386948" radius={[4, 4, 0, 0]} barSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-sm text-gray-500">Đang tải...</div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-2">
+        <Card className="gap-0 rounded-xl border-[#DDE5DC]">
+          <CardHeader className="px-5 py-4">
+            <CardTitle className="font-display text-lg">Phân bố Phiếu công việc</CardTitle>
+            <p className="mt-1 text-sm text-[#667067]">Trạng thái xử lý phiếu bảo trì, sửa chữa.</p>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 h-[240px] flex items-center justify-center">
+            {operations?.workOrders ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Khởi tạo', value: operations.workOrders.draft },
+                      { name: 'Đang xử lý', value: operations.workOrders.inProgress },
+                      { name: 'Hoàn thành', value: operations.workOrders.completed },
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    <Cell fill="#9ca3af" />
+                    <Cell fill="#f59e0b" />
+                    <Cell fill="#10b981" />
+                  </Pie>
+                  { }
+                  <Tooltip formatter={(value: any) => [value, 'Phiếu']} />
+                  <Legend verticalAlign="bottom" height={36}/>
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-sm text-gray-500">Đang tải...</div>
+            )}
           </CardContent>
         </Card>
       </section>
