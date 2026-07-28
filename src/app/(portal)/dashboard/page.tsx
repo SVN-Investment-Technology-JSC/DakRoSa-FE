@@ -2,29 +2,27 @@
 
 import { Activity, Database, ScrollText, ShieldCheck, Users, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
-import { Notice } from '@/components/ui/notice';
-import { apiRequest, ApiError } from '@/lib/api';
-
-interface Summary {
-  users: number;
-  activeUsers: number;
-  roles: number;
-  eventsToday: number;
-  collector: { status: string; label: string };
-}
+import { ApiError } from '@/services/service-error';
+import { dashboardService } from '@/services/dashboard.service';
+import type { DashboardSummary } from '@/types/dashboard';
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void apiRequest<Summary>('/dashboard/summary')
+    void dashboardService.getSummary()
       .then(setSummary)
       .catch((requestError) =>
         setError(requestError instanceof ApiError ? requestError.message : 'Không thể tải dữ liệu tổng quan.'),
       );
   }, []);
+
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
 
   const metrics = [
     { label: 'Tài khoản hệ thống', value: summary?.users ?? '—', note: `${summary?.activeUsers ?? 0} đang hoạt động`, icon: Users },
@@ -40,7 +38,6 @@ export default function DashboardPage() {
         title="Tổng quan vận hành"
         description="Nền móng quản trị tập trung đã sẵn sàng. Các chỉ số SCADA, hồ chứa và sản lượng sẽ được kết nối sau khi hoàn tất PoC Collector."
       />
-      {error && <Notice tone="error">{error}</Notice>}
       <section className="metrics-grid" aria-label="Chỉ số tổng quan">
         {metrics.map(({ label, value, note, icon: Icon }) => (
           <article className="metric-card" key={label}>

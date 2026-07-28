@@ -3,6 +3,7 @@
 import { CheckCircle2, FilePlus2, FileSignature, GripVertical, RotateCcw, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 type NodeType = 'start' | 'approval' | 'sign' | 'end';
 
@@ -319,14 +320,16 @@ const nodeRefCallback = useCallback((nodeId: string) => {
 
                   {isSelected && (
                     <foreignObject x={(coords.x1 + coords.x2) / 2 - 12} y={(coords.y1 + coords.y2) / 2 - 12} width="24" height="24">
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         className="pointer-events-auto w-6 h-6 bg-white rounded-full flex items-center justify-center text-red-500 shadow-md hover:bg-red-50"
                         onClick={() => setEdges((current) => current.filter((e) => e.id !== coords.id))}
                         title="Xóa đường nối"
                       >
                         <X size={14} />
-                      </button>
+                      </Button>
                     </foreignObject>
                   )}
                 </g>
@@ -381,7 +384,7 @@ const nodeRefCallback = useCallback((nodeId: string) => {
                 <div className="flex-1">
                   {isEditing ? (
                     <div className="flex flex-col gap-1">
-                      <input
+                      <Input
                         type="text"
                         className="text-xs border rounded px-1 py-0.5 font-bold"
                         value={node.label}
@@ -389,7 +392,7 @@ const nodeRefCallback = useCallback((nodeId: string) => {
                         onBlur={() => setEditingNodeId(null)}
                         autoFocus
                       />
-                      <input
+                      <Input
                         type="text"
                         className="text-xs border rounded px-1 py-0.5"
                         placeholder="Phụ trách..."
@@ -408,14 +411,16 @@ const nodeRefCallback = useCallback((nodeId: string) => {
                   )}
                 </div>
 
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
                   onClick={() => deleteNode(node.id)}
                   title="Xóa nút này"
                 >
                   <X size={14} />
-                </button>
+                </Button>
               </article>
             );
           })}

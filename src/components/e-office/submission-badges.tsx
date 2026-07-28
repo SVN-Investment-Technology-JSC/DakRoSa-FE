@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import {
+import type {
   SubmissionPriority,
   SubmissionStatus,
 } from '@/types/e-office';
@@ -14,9 +14,9 @@ const statusLabels: Record<SubmissionStatus, string> = {
 
 const statusVariants = {
   draft: 'secondary',
-  in_review: 'warning',
+  in_review: 'secondary',
   returned: 'destructive',
-  approved: 'success',
+  approved: 'default',
   cancelled: 'outline',
 } as const;
 
@@ -50,7 +50,7 @@ export function SubmissionPriorityBadge({
         priority === 'urgent'
           ? 'destructive'
           : priority === 'high'
-            ? 'warning'
+            ? 'secondary'
             : 'outline'
       }
     >

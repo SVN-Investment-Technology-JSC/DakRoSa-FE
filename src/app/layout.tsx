@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import '@fontsource-variable/nunito-sans';
 import '@fontsource-variable/literata';
-import { AuthProvider } from '@/providers/auth-provider';
+import { AppProviders } from '@/providers/app-providers';
+import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="vi">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AppProviders>{children}<Toaster /></AppProviders>
       </body>
     </html>
   );

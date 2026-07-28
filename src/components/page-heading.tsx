@@ -9,7 +9,7 @@ export function PageHeading({ eyebrow, title, description, actions }: PageHeadin
   return (
     <header className="mb-6 flex flex-col justify-between gap-4 border-b border-[#DDE5DC] pb-5 sm:flex-row sm:items-end">
       <div className="min-w-0">
-        <span className="mb-2 block text-[12px] font-black tracking-[0.12em] text-[#386948] uppercase">
+        <span className="mb-2 block text-[12px] font-black tracking-[0.12em] text-primary uppercase">
           {eyebrow}
         </span>
         <h1 className="font-display text-[clamp(1.7rem,3vw,2.25rem)] leading-tight font-bold tracking-[-0.025em] text-[#2C342E]">

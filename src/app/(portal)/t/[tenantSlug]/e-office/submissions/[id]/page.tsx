@@ -21,15 +21,17 @@ import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { NativeSelect } from '@/components/ui/native-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { apiRequest, ApiError } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { PERMISSIONS, tenantPath } from '@/lib/navigation';
 import { hasPermission } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
-import {
+import { ApiError } from '@/services/service-error';
+import { eOfficeService } from '@/services/e-office.service';
+import { signaturesService } from '@/services/signatures.service';
+import type {
   Reviewer,
   Submission,
   SubmissionAction,
@@ -61,9 +63,9 @@ export default function SubmissionDetailPage() {
   const fetchDetail = useCallback(
     () =>
       Promise.all([
-        apiRequest<Submission>(`/e-office/submissions/${id}`),
+        eOfficeService.getSubmission(id),
         hasPermission(user, PERMISSIONS.SUBMISSIONS_SUBMIT)
-          ? apiRequest<Reviewer[]>('/e-office/reviewers')
+          ? eOfficeService.getReviewers()
           : Promise.resolve([]),
       ]),
     [id, user],
@@ -269,7 +271,7 @@ export default function SubmissionDetailPage() {
                       {index < actions.length - 1 && (
                         <span className="absolute top-8 bottom-0 left-[17px] w-px bg-[#DDE5DC]" />
                       )}
-                      <span className="relative z-10 grid size-9 place-items-center rounded-full bg-[#E8F3E8] text-[#386948]">
+                      <span className="relative z-10 grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
                         <Check size={16} />
                       </span>
                       <div className="pt-1">
@@ -314,22 +316,16 @@ export default function SubmissionDetailPage() {
                 <CardContent className="grid gap-4 px-5 py-5">
                   <div className="grid gap-2">
                     <Label htmlFor="reviewer">Người duyệt</Label>
-                    <NativeSelect
-                      id="reviewer"
-                      value={reviewerId}
-                      onChange={(event) =>
-                        setReviewerId(event.target.value)
-                      }
-                    >
-                      {!reviewers.length && (
-                        <option value="">Chưa có người duyệt phù hợp</option>
-                      )}
-                      {reviewers.map((reviewer) => (
-                        <option key={reviewer.id} value={reviewer.id}>
-                          {reviewer.displayName} (@{reviewer.username})
-                        </option>
-                      ))}
-                    </NativeSelect>
+                    <Select value={reviewerId || undefined} onValueChange={setReviewerId} disabled={!reviewers.length}>
+                      <SelectTrigger id="reviewer" className="w-full"><SelectValue placeholder={reviewers.length ? 'Chọn người duyệt' : 'Chưa có người duyệt phù hợp'} /></SelectTrigger>
+                      <SelectContent position="popper">
+                        {reviewers.map((reviewer) => (
+                          <SelectItem key={reviewer.id} value={reviewer.id}>
+                            {reviewer.displayName} (@{reviewer.username})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="submit-note">Ghi chú</Label>
@@ -346,17 +342,7 @@ export default function SubmissionDetailPage() {
                     onClick={() =>
                       void runAction(
                         'submit',
-                        () =>
-                          apiRequest(
-                            `/e-office/submissions/${submission.id}/submit`,
-                            {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                assigneeId: reviewerId,
-                                note,
-                              }),
-                            },
-                          ),
+                        () => eOfficeService.submitForReview(submission.id, reviewerId, note),
                         'Hồ sơ đã được gửi phê duyệt.',
                       )
                     }
@@ -376,7 +362,7 @@ export default function SubmissionDetailPage() {
             <Card className="gap-0 rounded-xl border-[#C9D9C7]">
               <CardHeader className="border-b border-[#E4EAE2] px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <span className="grid size-10 place-items-center rounded-xl bg-[#E8F3E8] text-[#386948]">
+                  <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
                     <UserRound size={19} />
                   </span>
                   <div>
@@ -403,17 +389,7 @@ export default function SubmissionDetailPage() {
                     onClick={() =>
                       void runAction(
                         'return',
-                        () =>
-                          apiRequest(
-                            `/e-office/submissions/${submission.id}/review`,
-                            {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                decision: 'return',
-                                note,
-                              }),
-                            },
-                          ),
+                        () => eOfficeService.review(submission.id, 'return', note),
                         'Hồ sơ đã được trả lại người trình.',
                       )
                     }
@@ -430,17 +406,7 @@ export default function SubmissionDetailPage() {
                     onClick={() =>
                       void runAction(
                         'approve',
-                        () =>
-                          apiRequest(
-                            `/e-office/submissions/${submission.id}/review`,
-                            {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                decision: 'approve',
-                                note,
-                              }),
-                            },
-                          ),
+                        () => eOfficeService.review(submission.id, 'approve', note),
                         'Hồ sơ đã được phê duyệt.',
                       )
                     }
@@ -459,7 +425,7 @@ export default function SubmissionDetailPage() {
 
           {submission.status === 'approved' &&
             hasPermission(user, PERMISSIONS.SIGNATURES_REQUEST) && (
-              <Card className="gap-0 rounded-xl border-0 bg-[#386948] text-white">
+              <Card className="gap-0 rounded-xl border-0 bg-primary text-white">
                 <CardContent className="grid gap-4 px-5 py-5">
                   <span className="grid size-11 place-items-center rounded-xl bg-white/12 text-[#B9EFC5]">
                     <FileCheck2 size={21} />
@@ -478,13 +444,7 @@ export default function SubmissionDetailPage() {
                     onClick={() =>
                       void runAction(
                         'signature',
-                        () =>
-                          apiRequest('/signatures', {
-                            method: 'POST',
-                            body: JSON.stringify({
-                              submissionId: submission.id,
-                            }),
-                          }),
+                        () => signaturesService.createRequest(submission.id),
                         'Đã tạo yêu cầu ký số.',
                       )
                     }

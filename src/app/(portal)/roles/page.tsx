@@ -20,15 +20,20 @@ import {
   Users,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { Popconfirm } from 'antd';
+import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
-import { Notice } from '@/components/ui/notice';
-import { apiRequest, ApiError } from '@/lib/api';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { navigationConfig, NavigationIcon, PERMISSIONS } from '@/lib/navigation';
 import { hasPermission, normalizeModuleSelection } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
-import { Role } from '@/types/rbac';
+import { ApiError } from '@/services/service-error';
+import { rolesService } from '@/services/roles.service';
+import type { Role } from '@/types/rbac';
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
   'work-items': ListTodo,
@@ -47,6 +52,11 @@ const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   maintenance: CalendarClock,
 };
 
+const notify = ({ tone, message }: { tone: 'success' | 'error'; message: string }) => {
+  if (tone === 'success') toast.success(message);
+  else toast.error(message);
+};
+
 export default function RolesPage() {
   const { user } = useAuth();
   const [workspace, setWorkspace] = useState<{
@@ -57,7 +67,7 @@ export default function RolesPage() {
   const { roles, selectedRoleId, selectedKeys } = workspace;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const setNotice = notify;
   const [dialog, setDialog] = useState<'create' | 'edit' | null>(null);
   const [roleForm, setRoleForm] = useState({ code: '', name: '', description: '' });
 
@@ -75,7 +85,7 @@ export default function RolesPage() {
   const load = useCallback(async (preferredId?: string) => {
     setLoading(true);
     try {
-      const items = await apiRequest<Role[]>('/rbac/roles');
+      const items = await rolesService.getRoles();
       const next = items.find((role) => role.id === preferredId) ?? items[0] ?? null;
       setWorkspace({
         roles: items,
@@ -91,7 +101,7 @@ export default function RolesPage() {
 
   useEffect(() => {
     let active = true;
-    apiRequest<Role[]>('/rbac/roles')
+    rolesService.getRoles()
       .then((items) => {
         if (!active) return;
         const next = items[0] ?? null;
@@ -132,10 +142,7 @@ export default function RolesPage() {
     if (!selectedRole) return;
     setSaving(true);
     try {
-      const updated = await apiRequest<Role>(`/rbac/roles/${selectedRole.id}/permissions`, {
-        method: 'PUT',
-        body: JSON.stringify({ permissionKeys: [...selectedKeys] }),
-      });
+      const updated = await rolesService.updatePermissions(selectedRole.id, [...selectedKeys]);
       setWorkspace((current) => ({
         roles: current.roles.map((item) => (item.id === updated.id ? updated : item)),
         selectedRoleId: updated.id,
@@ -165,11 +172,8 @@ export default function RolesPage() {
     setSaving(true);
     try {
       const saved = dialog === 'create'
-        ? await apiRequest<Role>('/rbac/roles', { method: 'POST', body: JSON.stringify(roleForm) })
-        : await apiRequest<Role>(`/rbac/roles/${selectedRole?.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ name: roleForm.name, description: roleForm.description }),
-        });
+        ? await rolesService.createRole(roleForm)
+        : await rolesService.updateRole(selectedRole!.id, { name: roleForm.name, description: roleForm.description });
       setDialog(null);
       setNotice({ tone: 'success', message: dialog === 'create' ? 'Đã tạo vai trò mới.' : 'Đã cập nhật vai trò.' });
       await load(saved.id);
@@ -181,9 +185,9 @@ export default function RolesPage() {
   };
 
   const removeRole = async () => {
-    if (!selectedRole || !window.confirm(`Xóa vai trò “${selectedRole.name}”?`)) return;
+    if (!selectedRole) return;
     try {
-      await apiRequest(`/rbac/roles/${selectedRole.id}`, { method: 'DELETE' });
+      await rolesService.deleteRole(selectedRole.id);
       setNotice({ tone: 'success', message: 'Đã xóa vai trò.' });
       await load();
     } catch (error) {
@@ -199,16 +203,15 @@ export default function RolesPage() {
         description="Role “Người dùng” là mẫu khởi tạo có thể điều chỉnh và đổi tên theo doanh nghiệp. Quyền “Xem” là nền tảng: bỏ quyền xem sẽ tự xóa toàn bộ quyền thao tác của phân hệ đó."
         actions={hasPermission(user, PERMISSIONS.ROLES_CREATE) ? <Button onClick={openCreate}><Plus size={16} /> Tạo vai trò</Button> : undefined}
       />
-      {notice && <Notice tone={notice.tone}>{notice.message}</Notice>}
       <section className="role-layout">
         <aside className="panel role-sidebar">
           <div className="section-heading"><div><h2>Vai trò nghiệp vụ</h2><p>{roles.length} vai trò có thể cấu hình</p></div></div>
           <div className="role-tabs">
             {roles.map((role) => (
-              <button type="button" key={role.id} className={`role-tab ${role.id === selectedRoleId ? 'role-tab-active' : ''}`} onClick={() => selectRole(role)}>
+              <Button type="button" key={role.id} variant="ghost" className={`role-tab ${role.id === selectedRoleId ? 'role-tab-active' : ''}`} onClick={() => selectRole(role)}>
                 <span>{role.name.slice(0, 1).toUpperCase()}</span>
                 <div><strong>{role.name}</strong><small>{role.code} · {role.permissions.length} quyền</small></div>
-              </button>
+              </Button>
             ))}
           </div>
           {!loading && roles.length === 0 && <div className="empty-state" style={{ minHeight: 160 }}><ShieldCheck size={30} /><strong>Chưa có vai trò</strong></div>}
@@ -221,7 +224,18 @@ export default function RolesPage() {
                 <div><span className="eyebrow">Ma trận quyền</span><h2>{selectedRole.name}</h2><p>{selectedRole.description || 'Chưa có mô tả cho vai trò này.'}</p></div>
                 <div className="page-actions">
                   {hasPermission(user, PERMISSIONS.ROLES_UPDATE) && <Button variant="secondary" onClick={openEdit} disabled={selectedRoleIsAssignedToMe}>Cập nhật</Button>}
-                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && <Button variant="ghost" onClick={() => void removeRole()} disabled={selectedRoleIsAssignedToMe}><Trash2 size={15} /> Xóa</Button>}
+                  {hasPermission(user, PERMISSIONS.ROLES_DELETE) && !selectedRole.isSystem && (
+                    <Popconfirm
+                      title="Xóa vai trò?"
+                      description={`Vai trò “${selectedRole.name}” sẽ bị xóa.`}
+                      okText="Xóa"
+                      cancelText="Hủy"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => void removeRole()}
+                    >
+                      <Button variant="ghost" disabled={selectedRoleIsAssignedToMe}><Trash2 size={15} /> Xóa</Button>
+                    </Popconfirm>
+                  )}
                 </div>
               </div>
               <div className="permission-list">
@@ -234,11 +248,10 @@ export default function RolesPage() {
                       <div className="permission-options">
                         {options.map((option) => (
                           <label className="permission-check" key={option.key}>
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={selectedKeys.has(option.key)}
                               disabled={!canEditSelectedRole}
-                              onChange={(event) => togglePermission(module.viewPermission, option.key, event.target.checked)}
+                              onCheckedChange={(checked) => togglePermission(module.viewPermission, option.key, checked === true)}
                             />
                             {option.label}
                           </label>
@@ -261,21 +274,22 @@ export default function RolesPage() {
         </article>
       </section>
 
-      <Modal
-        open={dialog !== null}
-        title={dialog === 'create' ? 'Tạo vai trò nghiệp vụ' : 'Cập nhật vai trò'}
-        description="Mã vai trò ổn định để API dễ kiểm soát; tên hiển thị có thể thay đổi."
-        onClose={() => setDialog(null)}
-      >
+      <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialog === 'create' ? 'Tạo vai trò nghiệp vụ' : 'Cập nhật vai trò'}</DialogTitle>
+            <DialogDescription>Mã vai trò ổn định để API dễ kiểm soát; tên hiển thị có thể thay đổi.</DialogDescription>
+          </DialogHeader>
         <form onSubmit={submitRole}>
           <div className="modal-body">
-            <div className="form-field"><label htmlFor="role-code">Mã vai trò</label><input id="role-code" className="form-control" value={roleForm.code} onChange={(event) => setRoleForm({ ...roleForm, code: event.target.value.toLowerCase() })} pattern="[a-z0-9-]+" minLength={2} disabled={dialog === 'edit'} required /></div>
-            <div className="form-field"><label htmlFor="role-name">Tên hiển thị</label><input id="role-name" className="form-control" value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} minLength={2} required /></div>
-            <div className="form-field"><label htmlFor="role-description">Mô tả</label><textarea id="role-description" className="form-control" value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} maxLength={500} /></div>
+            <div className="form-field"><label htmlFor="role-code">Mã vai trò</label><Input id="role-code" value={roleForm.code} onChange={(event) => setRoleForm({ ...roleForm, code: event.target.value.toLowerCase() })} pattern="[a-z0-9-]+" minLength={2} disabled={dialog === 'edit'} required /></div>
+            <div className="form-field"><label htmlFor="role-name">Tên hiển thị</label><Input id="role-name" value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} minLength={2} required /></div>
+            <div className="form-field"><label htmlFor="role-description">Mô tả</label><Textarea id="role-description" value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} maxLength={500} /></div>
           </div>
-          <div className="modal-footer"><Button variant="secondary" onClick={() => setDialog(null)}>Hủy</Button><Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu vai trò'}</Button></div>
+          <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Hủy</Button></DialogClose><Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu vai trò'}</Button></DialogFooter>
         </form>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

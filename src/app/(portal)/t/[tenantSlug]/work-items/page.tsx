@@ -9,7 +9,7 @@ import {
   SubmissionStatusBadge,
 } from '@/components/e-office/submission-badges';
 import { PageHeading } from '@/components/page-heading';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -19,10 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { apiRequest, ApiError } from '@/lib/api';
+import { ApiError } from '@/services/service-error';
+import { eOfficeService } from '@/services/e-office.service';
 import { formatDate } from '@/lib/format';
 import { tenantPath } from '@/lib/navigation';
-import { Submission } from '@/types/e-office';
+import type { Submission } from '@/types/e-office';
 
 export default function WorkItemsPage() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
@@ -31,9 +32,7 @@ export default function WorkItemsPage() {
 
   useEffect(() => {
     let active = true;
-    void apiRequest<{ items: Submission[]; total: number }>(
-      '/e-office/work-items',
-    )
+    void eOfficeService.getWorkItems()
       .then((result) => {
         if (active) setItems(result.items);
       })
@@ -70,10 +69,7 @@ export default function WorkItemsPage() {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <EmptyState
-            title="Không có hồ sơ chờ xử lý"
-            description="Khi một hồ sơ được phân công cho bạn, hồ sơ sẽ xuất hiện tại đây."
-          />
+          <Empty><EmptyHeader><EmptyTitle>Không có hồ sơ chờ xử lý</EmptyTitle><EmptyDescription>Khi một hồ sơ được phân công cho bạn, hồ sơ sẽ xuất hiện tại đây.</EmptyDescription></EmptyHeader></Empty>
         ) : (
           <Table>
             <TableHeader>
@@ -111,7 +107,7 @@ export default function WorkItemsPage() {
                         tenantSlug,
                         `/e-office/submissions/${item.id}`,
                       )}
-                      className="inline-grid size-9 place-items-center rounded-lg text-[#386948] hover:bg-[#EAF3E8]"
+                      className="inline-grid size-9 place-items-center rounded-lg text-primary hover:bg-primary/10"
                       aria-label={`Mở hồ sơ ${item.code}`}
                     >
                       <ArrowRight size={18} />

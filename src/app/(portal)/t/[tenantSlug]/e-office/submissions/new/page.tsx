@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { NativeSelect } from '@/components/ui/native-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { apiRequest, ApiError } from '@/lib/api';
 import { tenantPath } from '@/lib/navigation';
-import { Submission } from '@/types/e-office';
+import { ApiError } from '@/services/service-error';
+import { eOfficeService } from '@/services/e-office.service';
+import type { Submission } from '@/types/e-office';
 
 export default function NewSubmissionPage() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
@@ -28,19 +29,13 @@ export default function NewSubmissionPage() {
     const data = new FormData(event.currentTarget);
     const dueAt = String(data.get('dueAt') ?? '');
     try {
-      const submission = await apiRequest<Submission>(
-        '/e-office/submissions',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            title: String(data.get('title') ?? ''),
-            summary: String(data.get('summary') ?? ''),
-            documentType: String(data.get('documentType') ?? ''),
-            priority: String(data.get('priority') ?? 'normal'),
-            ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
-          }),
-        },
-      );
+      const submission = await eOfficeService.createSubmission({
+        title: String(data.get('title') ?? ''),
+        summary: String(data.get('summary') ?? ''),
+        documentType: String(data.get('documentType') ?? ''),
+        priority: String(data.get('priority') ?? 'normal') as 'normal' | 'high' | 'urgent',
+        ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
+      });
       router.push(
         tenantPath(
           tenantSlug,
@@ -111,33 +106,33 @@ export default function NewSubmissionPage() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="documentType">Loại văn bản *</Label>
-                <NativeSelect
-                  id="documentType"
+                <Select
                   name="documentType"
                   required
-                  defaultValue=""
                 >
-                  <option value="" disabled>
-                    Chọn loại văn bản
-                  </option>
-                  <option value="Tờ trình">Tờ trình</option>
-                  <option value="Đề nghị">Đề nghị</option>
-                  <option value="Kế hoạch">Kế hoạch</option>
-                  <option value="Biên bản">Biên bản</option>
-                  <option value="Văn bản khác">Văn bản khác</option>
-                </NativeSelect>
+                  <SelectTrigger id="documentType" className="w-full"><SelectValue placeholder="Chọn loại văn bản" /></SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="Tờ trình">Tờ trình</SelectItem>
+                    <SelectItem value="Đề nghị">Đề nghị</SelectItem>
+                    <SelectItem value="Kế hoạch">Kế hoạch</SelectItem>
+                    <SelectItem value="Biên bản">Biên bản</SelectItem>
+                    <SelectItem value="Văn bản khác">Văn bản khác</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="priority">Mức độ ưu tiên</Label>
-                <NativeSelect
-                  id="priority"
+                <Select
                   name="priority"
                   defaultValue="normal"
                 >
-                  <option value="normal">Bình thường</option>
-                  <option value="high">Cao</option>
-                  <option value="urgent">Khẩn</option>
-                </NativeSelect>
+                  <SelectTrigger id="priority" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="normal">Bình thường</SelectItem>
+                    <SelectItem value="high">Cao</SelectItem>
+                    <SelectItem value="urgent">Khẩn</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid gap-2">
@@ -172,7 +167,7 @@ export default function NewSubmissionPage() {
 
         <Card className="h-fit gap-0 rounded-xl border-[#DDE5DC] bg-[#F0F5EE] shadow-none">
           <CardContent className="px-5 py-5">
-            <span className="mb-4 grid size-11 place-items-center rounded-xl bg-white text-[#386948] shadow-sm">
+            <span className="mb-4 grid size-11 place-items-center rounded-xl bg-white text-primary shadow-sm">
               <FilePlus2 size={21} />
             </span>
             <h2 className="font-display text-lg font-bold">

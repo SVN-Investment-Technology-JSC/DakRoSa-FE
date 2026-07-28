@@ -2,23 +2,12 @@
 
 import { RefreshCw, ScrollText } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
-import { Notice } from '@/components/ui/notice';
-import { apiRequest, ApiError } from '@/lib/api';
-
-interface AuditLog {
-  id: string;
-  userId: string | null;
-  username: string | null;
-  action: string;
-  resource: string;
-  resourceId: string | null;
-  status: string;
-  ipAddress: string | null;
-  details: Record<string, unknown> | null;
-  createdAt: string;
-}
+import { ApiError } from '@/services/service-error';
+import { auditService } from '@/services/audit.service';
+import type { AuditLog } from '@/types/audit';
 
 const actionLabels: Record<string, string> = {
   login: 'Đăng nhập',
@@ -46,7 +35,7 @@ export default function AuditPage() {
     setLoading(true);
     setError('');
     try {
-      const result = await apiRequest<{ items: AuditLog[]; total: number }>('/audit-logs?limit=50');
+      const result = await auditService.getLogs();
       setItems(result.items);
       setTotal(result.total);
     } catch (requestError) {
@@ -58,7 +47,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     let active = true;
-    apiRequest<{ items: AuditLog[]; total: number }>('/audit-logs?limit=50')
+    auditService.getLogs()
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -76,6 +65,10 @@ export default function AuditPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+
   return (
     <>
       <PageHeading
@@ -84,7 +77,6 @@ export default function AuditPage() {
         description="Theo dõi thay đổi quản trị mà không lưu mật khẩu, access token, refresh token hay nội dung Authorization."
         actions={<Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={15} /> Làm mới</Button>}
       />
-      {error && <Notice tone="error">{error}</Notice>}
       <section className="panel data-panel">
         {loading ? (
           <div className="empty-state"><ScrollText size={38} /><strong>Đang tải nhật ký…</strong></div>
