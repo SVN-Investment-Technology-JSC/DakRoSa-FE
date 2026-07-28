@@ -2,6 +2,13 @@
 'use client';
 
 import {
+  ArrowRight,
+  CheckCircle2,
+  ClipboardList,
+  Clock3,
+  FileText,
+  Gauge,
+  ListTodo,
   Plus,
   Users,
   AlertCircle,
