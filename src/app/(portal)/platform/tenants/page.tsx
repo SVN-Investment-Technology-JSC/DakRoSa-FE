@@ -10,7 +10,7 @@ import { Notice } from '@/components/ui/notice';
 import { apiRequest } from '@/lib/api';
 
 const modules = [
-  ['administration', 'Quản trị doanh nghiệp'], ['e-office', 'E-Office'], ['digital-signature', 'Chữ ký số'], ['organization', 'Cơ cấu tổ chức'], ['hrm', 'HRM'], ['attendance', 'Chấm công'], ['workspace', 'Không gian làm việc'], ['planning', 'Kế hoạch'], ['kpi', 'KPI'], ['project-management', 'Quản lý dự án'], ['internal-administration', 'Hành chính nội bộ'],
+  ['administration', 'Quản trị doanh nghiệp'], ['e-office', 'E-Office'], ['digital-signature', 'Chữ ký số'], ['organization', 'Cơ cấu tổ chức'], ['hrm', 'HRM'], ['attendance', 'Chấm công'], ['workspace', 'Không gian làm việc'], ['planning', 'Kế hoạch'], ['kpi', 'KPI'], ['project-management', 'Quản lý dự án'], ['internal-administration', 'Hành chính nội bộ'], ['cmms', 'Vận hành (EAM/CMMS)'],
 ] as const;
 type Tenant = { id: string; code: string; slug: string; name: string; shortName: string; primaryColor: string; locale: string; timezone: string; enabledModules: string[]; siteCount?: number; memberCount?: number };
 type CreatedTenant = Tenant & { initialAdmin: { username: string; password: string; displayName: string } };

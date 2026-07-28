@@ -77,7 +77,8 @@ export type TenantModuleKey =
   | 'planning'
   | 'kpi'
   | 'project-management'
-  | 'internal-administration';
+  | 'internal-administration'
+  | 'cmms';
 
 export interface NavigationItem {
   id: string;
@@ -89,6 +90,7 @@ export interface NavigationItem {
   viewPermission: PermissionKey;
   actions: PermissionAction[];
   module?: TenantModuleKey;
+  tenantAware?: boolean;
   children?: readonly NavigationChild[];
 }
 
@@ -96,6 +98,7 @@ export interface NavigationChild {
   id: string;
   label: string;
   href: string;
+  tenantAware?: boolean;
 }
 
 export const navigationConfig: readonly NavigationItem[] = [
@@ -107,6 +110,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/dashboard',
     icon: 'dashboard',
     viewPermission: PERMISSIONS.DASHBOARD_VIEW,
+    tenantAware: true,
     actions: [],
   },
   {
@@ -117,6 +121,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/work-items',
     icon: 'work-items',
     viewPermission: PERMISSIONS.WORK_ITEMS_VIEW,
+    tenantAware: true,
     actions: [],
   },
   {
@@ -128,6 +133,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     icon: 'submissions',
     viewPermission: PERMISSIONS.SUBMISSIONS_VIEW,
     module: 'e-office',
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.SUBMISSIONS_CREATE, label: 'Tạo mới' },
       { key: PERMISSIONS.SUBMISSIONS_UPDATE, label: 'Cập nhật' },
@@ -144,6 +150,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     icon: 'signatures',
     viewPermission: PERMISSIONS.SIGNATURES_VIEW,
     module: 'digital-signature',
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.SIGNATURES_REQUEST, label: 'Tạo yêu cầu' },
     ],
@@ -157,6 +164,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     icon: 'settings',
     viewPermission: PERMISSIONS.TENANT_SETTINGS_VIEW,
     module: 'administration',
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.TENANT_SETTINGS_UPDATE, label: 'Cập nhật cấu hình' },
     ],
@@ -170,6 +178,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     icon: 'organization',
     viewPermission: PERMISSIONS.ORGANIZATION_VIEW,
     module: 'organization',
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.ORGANIZATION_MANAGE, label: 'Quản lý cơ cấu' },
     ],
@@ -182,6 +191,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/users',
     icon: 'users',
     viewPermission: PERMISSIONS.USERS_VIEW,
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.USERS_CREATE, label: 'Tạo mới' },
       { key: PERMISSIONS.USERS_UPDATE, label: 'Cập nhật' },
@@ -197,6 +207,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/roles',
     icon: 'roles',
     viewPermission: PERMISSIONS.ROLES_VIEW,
+    tenantAware: true,
     actions: [
       { key: PERMISSIONS.ROLES_CREATE, label: 'Tạo vai trò' },
       { key: PERMISSIONS.ROLES_UPDATE, label: 'Cập nhật' },
@@ -212,6 +223,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/audit',
     icon: 'audit',
     viewPermission: PERMISSIONS.AUDIT_VIEW,
+    tenantAware: true,
     actions: [],
   },
   {
@@ -221,6 +233,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/operations',
     icon: 'operations',
     viewPermission: PERMISSIONS.OPERATIONS_VIEW,
+    module: 'cmms',
     actions: [
       { key: PERMISSIONS.EQUIPMENT_VIEW, label: 'Xem thiết bị' },
       { key: PERMISSIONS.EQUIPMENT_CREATE, label: 'Thêm thiết bị' },
@@ -238,10 +251,10 @@ export const navigationConfig: readonly NavigationItem[] = [
       { key: PERMISSIONS.MAINTENANCE_DELETE, label: 'Xóa KH bảo trì' },
     ],
     children: [
-      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment' },
-      { id: 'inventory', label: 'Kho vật tư', href: '/inventory' },
-      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders' },
-      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance' },
+      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true },
+      { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true },
+      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true },
+      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance', tenantAware: true },
       { id: 'occ', label: 'Liên kết OCC', href: '/occ' },
     ],
   },

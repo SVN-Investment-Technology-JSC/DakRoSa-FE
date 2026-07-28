@@ -15,6 +15,7 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<'materials' | 'stock'>('stock');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [stock, setStock] = useState<InventoryItem[]>([]);
+  const [lowStock, setLowStock] = useState<InventoryItem[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,11 +56,21 @@ export default function InventoryPage() {
     }
   }, []);
 
+  const loadLowStock = useCallback(async () => {
+    try {
+      const data = await inventoryApi.getLowStock();
+      setLowStock(data);
+    } catch {
+      // It's okay to fail silently for alerts or log it
+      console.error('Failed to load low stock alerts');
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadMaterials(), loadStock()]);
+    await Promise.all([loadMaterials(), loadStock(), loadLowStock()]);
     setLoading(false);
-  }, [loadMaterials, loadStock]);
+  }, [loadMaterials, loadStock, loadLowStock]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -180,6 +191,28 @@ export default function InventoryPage() {
           >
             {notice.tone === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
             {notice.message}
+          </div>
+        )}
+
+        {lowStock.length > 0 && (
+          <div className="mb-6 bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+            <div className="flex gap-3">
+              <div className="p-2 bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400 rounded-lg h-fit">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-red-900 dark:text-red-400">Cảnh báo Tồn kho</h3>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                  Có {lowStock.length} vật tư đang ở dưới mức tồn kho an toàn (Min Stock). Vui lòng nhập thêm hàng.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setTab('stock')}
+              className="text-sm font-medium text-red-700 hover:text-red-800 dark:text-red-400 bg-white/50 hover:bg-white/80 dark:bg-black/20 dark:hover:bg-black/40 px-4 py-2 rounded-lg transition-colors border border-red-200 dark:border-red-800/30 whitespace-nowrap"
+            >
+              Xem chi tiết
+            </button>
           </div>
         )}
 

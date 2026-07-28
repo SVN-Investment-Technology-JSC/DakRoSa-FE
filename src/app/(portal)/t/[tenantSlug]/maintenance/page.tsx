@@ -83,14 +83,13 @@ export default function MaintenancePage() {
         description: form.description || undefined,
         frequencyDays: Number(form.frequencyDays) || undefined,
         nextDueDate: form.nextDueDate || undefined,
-        isActive: form.isActive,
       };
 
       if (dialog === 'create') {
         await maintenanceApi.create(payload);
         setNotice({ tone: 'success', message: 'Tạo kế hoạch bảo trì thành công.' });
       } else if (dialog === 'edit' && selectedPlan) {
-        await maintenanceApi.update(selectedPlan.id, payload);
+        await maintenanceApi.update(selectedPlan.id, { ...payload, isActive: form.isActive });
         setNotice({ tone: 'success', message: 'Cập nhật kế hoạch bảo trì thành công.' });
       }
       setDialog(null);

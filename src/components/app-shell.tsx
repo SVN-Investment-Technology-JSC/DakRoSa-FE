@@ -66,9 +66,17 @@ function matchesNavigationItem(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function getHref(href: string, tenantAware?: boolean, tenantSlug?: string | null) {
+  return tenantAware && tenantSlug ? tenantPath(tenantSlug, href) : href;
+}
+
 function matchesItemOrChild(pathname: string, item: (typeof navigationConfig)[number], tenantSlug?: string | null) {
-  const tenantHref = tenantSlug ? tenantPath(tenantSlug, item.href) : item.href;
-  return matchesNavigationItem(pathname, tenantHref) || matchesNavigationItem(pathname, item.href) || item.children?.some((child) => matchesNavigationItem(pathname, child.href));
+  const itemHref = getHref(item.href, item.tenantAware, tenantSlug);
+  if (matchesNavigationItem(pathname, itemHref)) return true;
+  return item.children?.some((child) => {
+    const childHref = getHref(child.href, child.tenantAware, tenantSlug);
+    return matchesNavigationItem(pathname, childHref);
+  }) ?? false;
 }
 
 function tenantSlugFromPath(pathname: string): string | null {
@@ -256,10 +264,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <div className="grid gap-1">
                   {items.map((item) => {
                     const Icon = icons[item.icon];
-                    const href = tenantPath(
-                      user.activeTenant.slug,
-                      item.href,
-                    );
+                    const href = getHref(item.href, item.tenantAware, user.activeTenant.slug);
                     const active = matchesItemOrChild(pathname, item, user.activeTenant.slug);
                     const expanded = expandedItems.has(item.id) || active;
                     const toggleExpanded = (e: React.MouseEvent) => {
@@ -306,11 +311,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         {item.children && expanded && (
                           <div className="ml-6 pl-3 border-l border-white/20 grid gap-1">
                             {item.children.map((child) => {
-                              const childActive = matchesNavigationItem(pathname, child.href);
+                              const childHref = getHref(child.href, child.tenantAware, user.activeTenant.slug);
+                              const childActive = matchesNavigationItem(pathname, childHref);
                               return (
                                 <Link
                                   key={child.id}
-                                  href={child.href}
+                                  href={childHref}
                                   className={cn(
                                     'block py-1.5 px-2 rounded-lg text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white',
                                     childActive && 'bg-white/20 text-white font-bold',
@@ -355,7 +361,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   return (
                     <div key={item.id} className="grid gap-1">
                       <Link
-                        href={item.href}
+                        href={getHref(item.href, item.tenantAware, user.activeTenant.slug)}
                         className={cn(
                           'group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold text-white/72 transition',
                           active
@@ -385,11 +391,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       {item.children && expanded && (
                         <div className="ml-6 pl-3 border-l border-white/20 grid gap-1">
                           {item.children.map((child) => {
-                            const childActive = matchesNavigationItem(pathname, child.href);
+                            const childHref = getHref(child.href, child.tenantAware, user.activeTenant.slug);
+                            const childActive = matchesNavigationItem(pathname, childHref);
                             return (
                               <Link
                                 key={child.id}
-                                href={child.href}
+                                href={childHref}
                                 className={cn(
                                   'block py-1.5 px-2 rounded-lg text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white',
                                   childActive && 'bg-white/20 text-white font-bold',

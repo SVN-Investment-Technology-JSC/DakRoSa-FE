@@ -2,6 +2,7 @@
 
 import { ClipboardList, Edit2, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { Protected } from '@/components/protected';
 import { PERMISSIONS } from '@/lib/navigation';
 import { workOrderApi } from '@/lib/api-work-order';
@@ -11,6 +12,7 @@ import { hasPermission } from '@/lib/permissions';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function WorkOrderPage() {
+  const params = useParams();
   const { user } = useAuth();
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,17 +53,11 @@ export default function WorkOrderPage() {
     setDialog('create');
   };
 
+  const router = useRouter();
+  const tenantSlug = params.tenantSlug as string;
+
   const handleOpenEdit = (wo: WorkOrder) => {
-    setSelectedWO(wo);
-    setForm({
-      title: wo.title,
-      description: wo.description || '',
-      type: wo.type,
-      priority: wo.priority,
-      status: wo.status,
-      downtimeMinutes: wo.downtimeMinutes,
-    });
-    setDialog('edit');
+    router.push(`/t/${tenantSlug}/work-orders/${wo.id}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,10 +67,11 @@ export default function WorkOrderPage() {
     try {
       if (dialog === 'create') {
         await workOrderApi.create({
+          code: `WO-${Date.now()}`,
           title: form.title,
           description: form.description || undefined,
-          type: form.type,
-          priority: form.priority,
+          type: form.type as any,
+          priority: form.priority as any,
         });
         setNotice({ tone: 'success', message: 'Tạo phiếu công việc thành công.' });
       } else if (dialog === 'edit' && selectedWO) {

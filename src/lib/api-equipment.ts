@@ -19,4 +19,15 @@ export const equipmentApi = {
     apiRequest<{ success: boolean }>(`/equipment/${id}`, {
       method: 'DELETE',
     }),
+  getDocuments: (id: string) => 
+    apiRequest<any[]>(`/equipment/${id}/documents`),
+  addDocument: (id: string, data: { name: string; type?: string; fileUrl: string; description?: string }) =>
+    apiRequest<any>(`/equipment/${id}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  removeDocument: (id: string, docId: string) =>
+    apiRequest<{ success: boolean }>(`/equipment/${id}/documents/${docId}`, {
+      method: 'DELETE',
+    }),
 };

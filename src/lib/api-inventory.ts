@@ -14,7 +14,7 @@ export const inventoryApi = {
       body: JSON.stringify(data),
     }),
   getStock: () => apiRequest<InventoryItem[]>('/inventory/stock'),
-  getLowStock: () => apiRequest<InventoryItem[]>('/inventory/low-stock'),
+  getLowStock: () => apiRequest<InventoryItem[]>('/inventory/alerts/low-stock'),
   transaction: (data: InventoryTransactionDto) =>
     apiRequest<{ success: boolean; transactionId: string }>('/inventory/transaction', {
       method: 'POST',

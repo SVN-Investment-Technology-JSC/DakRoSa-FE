@@ -12,11 +12,14 @@ export interface WorkOrder {
   startTime: string | null;
   endTime: string | null;
   downtimeMinutes: number;
+  rootCause: string | null;
+  attachments: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateWorkOrderDto {
+  code: string;
   title: string;
   description?: string;
   type: 'INCIDENT' | 'MAINTENANCE';
@@ -33,4 +36,6 @@ export interface UpdateWorkOrderDto {
   equipmentId?: string;
   assigneeId?: string;
   downtimeMinutes?: number;
+  rootCause?: string;
+  attachments?: string[];
 }
