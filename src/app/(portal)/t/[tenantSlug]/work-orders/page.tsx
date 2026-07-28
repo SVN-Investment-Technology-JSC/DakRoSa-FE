@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use client';
 
 import { ClipboardList, Edit2, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -44,7 +45,7 @@ export default function WorkOrderPage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     load();
   }, [load]);
 

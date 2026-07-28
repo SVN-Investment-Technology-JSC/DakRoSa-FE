@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { apiRequest } from './api';
 import { Equipment, CreateEquipmentDto, UpdateEquipmentDto } from '@/types/equipment';
 

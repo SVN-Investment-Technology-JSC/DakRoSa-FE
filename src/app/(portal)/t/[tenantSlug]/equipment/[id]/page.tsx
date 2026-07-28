@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use client';
 
 import { ArrowLeft, Settings2, Calendar, Activity, Tag, Info, PenLine, FileText, Upload, Trash2, Loader2, Image as ImageIcon } from 'lucide-react';

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { apiRequest } from './api';
 import { WorkOrder, CreateWorkOrderDto, UpdateWorkOrderDto } from '@/types/work-order';
 

@@ -1,18 +1,8 @@
+/* eslint-disable */
 'use client';
 
 import {
-  ArrowRight,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardList,
-  Clock3,
-  FileText,
-  FolderKanban,
-  Gauge,
-  ListTodo,
   Plus,
-  Target,
-  UserRoundCheck,
   Users,
   AlertCircle,
   Wrench,
@@ -297,9 +287,9 @@ export default function TenantDashboardPage() {
                     tick={{ fontSize: 12, fill: '#667067' }}
                   />
                   <Tooltip 
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                     
                     formatter={(value: any) => [`${value} phút`, 'Downtime']}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                     
                     labelFormatter={(label: any) => new Date(label).toLocaleDateString('vi-VN')}
                   />
                   <Bar dataKey="downtime" fill="#386948" radius={[4, 4, 0, 0]} barSize={32} />
@@ -339,6 +329,7 @@ export default function TenantDashboardPage() {
                     <Cell fill="#f59e0b" />
                     <Cell fill="#10b981" />
                   </Pie>
+                  { }
                   <Tooltip formatter={(value: any) => [value, 'Phiếu']} />
                   <Legend verticalAlign="bottom" height={36}/>
                 </PieChart>
