@@ -255,7 +255,7 @@ export const navigationConfig: readonly NavigationItem[] = [
       { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true },
       { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true },
       { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance', tenantAware: true },
-      { id: 'occ', label: 'Liên kết OCC', href: '/occ' },
+      { id: 'occ', label: 'Liên kết OCC', href: '/occ', tenantAware: true },
     ],
   },
   {
