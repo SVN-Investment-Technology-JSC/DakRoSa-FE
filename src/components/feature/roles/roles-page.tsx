@@ -2,11 +2,14 @@
 
 import {
   BriefcaseBusiness,
+  CalendarClock,
+  ClipboardList,
   FileCheck2,
   Files,
   LayoutDashboard,
   ListTodo,
   Network,
+  Package,
   Plus,
   RadioTower,
   Save,
@@ -44,6 +47,10 @@ const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   organization: Network,
   eoffice: BriefcaseBusiness,
   operations: RadioTower,
+  equipment: Settings2,
+  inventory: Package,
+  work_order: ClipboardList,
+  maintenance: CalendarClock,
 };
 
 const notify = ({ tone, message }: { tone: 'success' | 'error'; message: string }) => {
