@@ -37,10 +37,10 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
-import { Button } from './ui/button';
-import { BrandMark } from './brand-mark';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Skeleton } from './ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { BrandMark } from '@/components/auth/brand-mark';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,

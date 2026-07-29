@@ -6,6 +6,7 @@ describe('firstPermittedPath', () => {
     expect(firstPermittedPath({
       id: 'admin-id',
       username: 'admin',
+      isPlatformAdmin: true,
       displayName: 'Quản trị hệ thống',
       activeTenant: {
         id: 'tenant-id',
