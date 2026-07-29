@@ -57,22 +57,23 @@ export function PlatformTenantConfigurationPage({ tenantId }: { tenantId: string
     (state) => state.platformTenants,
   );
   const tenant = active.find((item) => item.id === tenantId);
+  const [trackedTenantId, setTrackedTenantId] = useState<string | undefined>(undefined);
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
   const [removeLogo, setRemoveLogo] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
 
+  // React-recommended pattern: update state during render when props change
+  // (avoids setState inside useEffect which causes cascading renders)
+  if (tenant && tenant.id !== trackedTenantId) {
+    setTrackedTenantId(tenant.id);
+    setEnabledModules(tenant.enabledModules.filter((module) => module !== 'core'));
+    setRemoveLogo(false);
+  }
+
   useEffect(() => {
     void dispatch(fetchActiveTenants({}));
   }, [dispatch]);
-
-  useEffect(() => {
-    if (!tenant) return;
-    setEnabledModules(
-      tenant.enabledModules.filter((module) => module !== 'core'),
-    );
-    setRemoveLogo(false);
-  }, [tenant]);
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

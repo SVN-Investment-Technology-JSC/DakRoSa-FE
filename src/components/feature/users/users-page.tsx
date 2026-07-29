@@ -70,7 +70,6 @@ export function UsersPage() {
   const { result, roles } = data;
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const setNotice = notify;
   const [dialogState, setDialogState] = useState<DialogState>({
     mode: null,
     selected: null,
@@ -96,7 +95,7 @@ export function UsersPage() {
       ]);
       setData({ result: users, roles: assignableRoles });
     } catch (error) {
-      setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải người dùng.' });
+      notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải người dùng.' });
     } finally {
       setLoading(false);
     }
@@ -114,7 +113,7 @@ export function UsersPage() {
       })
       .catch((error) => {
         if (!active) return;
-        setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải người dùng.' });
+        notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải người dùng.' });
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -125,7 +124,7 @@ export function UsersPage() {
   }, [currentUser?.activeTenant.id]);
 
   const showError = (error: unknown) =>
-    setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Thao tác không thành công.' });
+    notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Thao tác không thành công.' });
 
   const openCreate = () => {
     setVisiblePasswords((state) => ({ ...state, create: false }));
@@ -168,7 +167,7 @@ export function UsersPage() {
     try {
       await usersService.createUser(createForm);
       closeDialog();
-      setNotice({ tone: 'success', message: 'Đã tạo tài khoản mới.' });
+      notify({ tone: 'success', message: 'Đã tạo tài khoản mới.' });
       await load(search);
     } catch (error) {
       showError(error);
@@ -191,7 +190,7 @@ export function UsersPage() {
         await usersService.resetPassword(selected.id, newPassword);
       }
       closeDialog();
-      setNotice({ tone: 'success', message: 'Đã cập nhật người dùng.' });
+      notify({ tone: 'success', message: 'Đã cập nhật người dùng.' });
       await load(search);
     } catch (error) {
       showError(error);
@@ -207,7 +206,7 @@ export function UsersPage() {
     try {
       await usersService.resetPassword(selected.id, newPassword);
       closeDialog();
-      setNotice({ tone: 'success', message: `Đã đặt lại mật khẩu cho @${selected.username}. Các phiên cũ đã bị thu hồi.` });
+      notify({ tone: 'success', message: `Đã đặt lại mật khẩu cho @${selected.username}. Các phiên cũ đã bị thu hồi.` });
     } catch (error) {
       showError(error);
     } finally {
@@ -218,7 +217,7 @@ export function UsersPage() {
   const remove = async (item: UserRecord) => {
     try {
       await usersService.deleteUser(item.id);
-      setNotice({ tone: 'success', message: 'Đã xóa tài khoản.' });
+      notify({ tone: 'success', message: 'Đã xóa tài khoản.' });
       await load(search);
     } catch (error) {
       showError(error);

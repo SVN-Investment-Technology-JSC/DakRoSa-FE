@@ -61,7 +61,6 @@ export function RolesPage() {
   const { roles, selectedRoleId, selectedKeys } = workspace;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const setNotice = notify;
   const [dialog, setDialog] = useState<'create' | 'edit' | null>(null);
   const [roleForm, setRoleForm] = useState({ code: '', name: '', description: '' });
 
@@ -87,7 +86,7 @@ export function RolesPage() {
         selectedKeys: new Set(next?.permissions.map((permission) => permission.key) ?? []),
       });
     } catch (error) {
-      setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải vai trò.' });
+      notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải vai trò.' });
     } finally {
       setLoading(false);
     }
@@ -107,7 +106,7 @@ export function RolesPage() {
       })
       .catch((error) => {
         if (!active) return;
-        setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải vai trò.' });
+        notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể tải vai trò.' });
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -142,9 +141,9 @@ export function RolesPage() {
         selectedRoleId: updated.id,
         selectedKeys: new Set(updated.permissions.map((permission) => permission.key)),
       }));
-      setNotice({ tone: 'success', message: `Đã lưu ma trận quyền cho vai trò “${updated.name}”.` });
+      notify({ tone: 'success', message: `Đã lưu ma trận quyền cho vai trò “${updated.name}”.` });
     } catch (error) {
-      setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể lưu quyền.' });
+      notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể lưu quyền.' });
     } finally {
       setSaving(false);
     }
@@ -169,10 +168,10 @@ export function RolesPage() {
         ? await rolesService.createRole(roleForm)
         : await rolesService.updateRole(selectedRole!.id, { name: roleForm.name, description: roleForm.description });
       setDialog(null);
-      setNotice({ tone: 'success', message: dialog === 'create' ? 'Đã tạo vai trò mới.' : 'Đã cập nhật vai trò.' });
+      notify({ tone: 'success', message: dialog === 'create' ? 'Đã tạo vai trò mới.' : 'Đã cập nhật vai trò.' });
       await load(saved.id);
     } catch (error) {
-      setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể lưu vai trò.' });
+      notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể lưu vai trò.' });
     } finally {
       setSaving(false);
     }
@@ -182,10 +181,10 @@ export function RolesPage() {
     if (!selectedRole) return;
     try {
       await rolesService.deleteRole(selectedRole.id);
-      setNotice({ tone: 'success', message: 'Đã xóa vai trò.' });
+      notify({ tone: 'success', message: 'Đã xóa vai trò.' });
       await load();
     } catch (error) {
-      setNotice({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể xóa vai trò.' });
+      notify({ tone: 'error', message: error instanceof ApiError ? error.message : 'Không thể xóa vai trò.' });
     }
   };
 

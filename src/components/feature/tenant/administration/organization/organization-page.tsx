@@ -23,7 +23,13 @@ export function OrganizationPage() {
     try { setData(await tenancyService.getOrganization()); }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Không thể tải cơ cấu tổ chức.'); }
   };
-  useEffect(() => { void loadOrganization(); }, []);
+  useEffect(() => {
+    let active = true;
+    tenancyService.getOrganization()
+      .then((org) => { if (active) setData(org); })
+      .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : 'Không thể tải cơ cấu tổ chức.'); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => { if (message) toast.success(message); }, [message]);
   useEffect(() => { if (error) toast.error(error); }, [error]);
 
