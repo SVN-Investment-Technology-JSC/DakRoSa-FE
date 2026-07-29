@@ -121,14 +121,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [switchError, setSwitchError] = useState('');
   const [pendingTenantSlug, setPendingTenantSlug] = useState<string | null>(null);
   const routeTenantSlug = tenantSlugFromPath(pathname);
+  const isModuleEnabled = (module?: string) =>
+    !module ||
+    user?.isPlatformAdmin ||
+    Boolean(user?.activeTenant.enabledModules.includes(module));
 
   const visibleItems = useMemo(
     () =>
-      navigationConfig.filter(
-        (item) =>
-          hasPermission(user, item.viewPermission) &&
-          (!item.module || user?.isPlatformAdmin || user?.activeTenant.enabledModules.includes(item.module)),
-      ),
+      navigationConfig.flatMap((item) => {
+        if (!hasPermission(user, item.viewPermission) || !isModuleEnabled(item.module)) {
+          return [];
+        }
+        const children = item.children?.filter((child) =>
+          isModuleEnabled(child.module),
+        );
+        if (item.children && !children?.length) return [];
+        return [{ ...item, children }];
+      }),
     [user],
   );
 
@@ -139,8 +148,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pageAllowed =
     !activeItem ||
     (hasPermission(user, activeItem.viewPermission) &&
-      (!activeItem.module || user?.isPlatformAdmin ||
-        user?.activeTenant.enabledModules.includes(activeItem.module)));
+      isModuleEnabled(activeItem.module) &&
+      (activeChild
+        ? isModuleEnabled(activeChild.module)
+        : !activeItem.children ||
+          activeItem.children.some((child) => isModuleEnabled(child.module))));
   const tenantMismatch =
     Boolean(routeTenantSlug) &&
     Boolean(user) &&

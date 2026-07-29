@@ -99,6 +99,7 @@ export interface NavigationChild {
   label: string;
   href: string;
   tenantAware?: boolean;
+  module?: TenantModuleKey;
 }
 
 export const navigationConfig: readonly NavigationItem[] = [
@@ -191,6 +192,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/users',
     icon: 'users',
     viewPermission: PERMISSIONS.USERS_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [
       { key: PERMISSIONS.USERS_CREATE, label: 'Tạo mới' },
@@ -207,6 +209,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/roles',
     icon: 'roles',
     viewPermission: PERMISSIONS.ROLES_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [
       { key: PERMISSIONS.ROLES_CREATE, label: 'Tạo vai trò' },
@@ -223,6 +226,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/audit',
     icon: 'audit',
     viewPermission: PERMISSIONS.AUDIT_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [],
   },
@@ -251,11 +255,11 @@ export const navigationConfig: readonly NavigationItem[] = [
       { key: PERMISSIONS.MAINTENANCE_DELETE, label: 'Xóa KH bảo trì' },
     ],
     children: [
-      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true },
-      { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true },
-      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true },
-      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance', tenantAware: true },
-      { id: 'occ', label: 'Liên kết OCC', href: '/occ', tenantAware: true },
+      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true, module: 'cmms' },
+      { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true, module: 'cmms' },
+      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance', tenantAware: true, module: 'cmms' },
+      { id: 'occ', label: 'Liên kết OCC', href: '/occ', tenantAware: true, module: 'cmms' },
     ],
   },
   {
@@ -267,11 +271,11 @@ export const navigationConfig: readonly NavigationItem[] = [
     viewPermission: PERMISSIONS.EOFFICE_VIEW,
     actions: [],
     children: [
-      { id: 'eoffice-workflow', label: 'Văn bản & quy trình', href: '/eoffice-workflow' },
-      { id: 'hrm', label: 'Nhân sự & chấm công', href: '/hrm' },
-      { id: 'workspace', label: 'Không gian công việc', href: '/workspace' },
-      { id: 'kpi', label: 'KPI', href: '/kpi' },
-      { id: 'projects', label: 'Dự án', href: '/projects' },
+      { id: 'eoffice-workflow', label: 'Văn bản & quy trình', href: '/eoffice-workflow', module: 'e-office' },
+      { id: 'hrm', label: 'Nhân sự & chấm công', href: '/hrm', module: 'hrm' },
+      { id: 'workspace', label: 'Không gian công việc', href: '/workspace', module: 'workspace' },
+      { id: 'kpi', label: 'KPI', href: '/kpi', module: 'kpi' },
+      { id: 'projects', label: 'Dự án', href: '/projects', module: 'project-management' },
     ],
   },
 
