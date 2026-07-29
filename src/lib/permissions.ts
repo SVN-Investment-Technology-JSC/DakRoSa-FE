@@ -1,5 +1,5 @@
 import { navigationConfig, PermissionKey, tenantPath } from './navigation';
-import { AuthUser } from '@/types/auth';
+import type { AuthUser } from '@/types/auth';
 
 export function hasPermission(user: AuthUser | null, permission: PermissionKey): boolean {
   if (!user) return false;

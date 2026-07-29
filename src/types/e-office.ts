@@ -92,3 +92,20 @@ export interface SignatureRequest {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SubmissionFilters {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: SubmissionStatus | '';
+}
+
+export interface CreateSubmissionInput {
+  title: string;
+  summary: string;
+  documentType: string;
+  priority: SubmissionPriority;
+  dueAt?: string;
+}
+
+export type ReviewDecision = 'approve' | 'return';

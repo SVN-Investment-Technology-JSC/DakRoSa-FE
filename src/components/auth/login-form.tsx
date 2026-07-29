@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError } from '@/lib/api';
+import { ApiError } from '@/services/service-error';
 import { useAuth } from '@/providers/auth-provider';
 
 export function LoginForm() {
@@ -93,14 +93,16 @@ export function LoginForm() {
                 minLength={8}
                 required
               />
-              <button
+              <Button
                 type="button"
-                className="absolute top-1/2 right-2 grid size-9 -translate-y-1/2 cursor-pointer place-items-center rounded-lg text-[#758077] transition-colors hover:bg-[#F0F5EE] hover:text-[#386948] focus-visible:ring-2 focus-visible:ring-[#386948]/30 focus-visible:outline-none"
+                variant="ghost"
+                size="icon"
+                className="absolute top-1/2 right-2 size-9 -translate-y-1/2 text-[#758077] hover:bg-[#F0F5EE] hover:text-[#386948]"
                 onClick={() => setShowPassword((visible) => !visible)}
                 aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
+              </Button>
             </div>
           </div>
 
