@@ -6,6 +6,7 @@ describe('firstPermittedPath', () => {
     expect(firstPermittedPath({
       id: 'admin-id',
       username: 'admin',
+      isPlatformAdmin: true,
       displayName: 'Quản trị hệ thống',
       activeTenant: {
         id: 'tenant-id',
@@ -19,6 +20,7 @@ describe('firstPermittedPath', () => {
         timezone: 'Asia/Ho_Chi_Minh',
         roleCodes: ['admin'],
         permissions: [],
+        enabledModules: [],
       },
       tenants: [],
       roleCodes: ['admin'],

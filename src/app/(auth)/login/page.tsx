@@ -6,7 +6,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { LoginForm } from '@/components/auth/login-form';
-import { BrandMark } from '@/components/brand-mark';
+import { BrandMark } from '@/components/auth/brand-mark';
 
 export const metadata: Metadata = {
   title: 'Đăng nhập',
