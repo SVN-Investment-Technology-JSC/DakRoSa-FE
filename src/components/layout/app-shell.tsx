@@ -133,7 +133,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const activeItem = navigationConfig.find((item) => matchesItemOrChild(pathname, item, user?.activeTenant.slug));
-  const activeChild = activeItem?.children?.find((child) => matchesNavigationItem(pathname, child.href));
+  const activeChild = activeItem?.children?.find((child) =>
+    matchesNavigationItem(pathname, getHref(child.href, child.tenantAware, user?.activeTenant.slug)),
+  );
   const pageAllowed =
     !activeItem ||
     (hasPermission(user, activeItem.viewPermission) &&
