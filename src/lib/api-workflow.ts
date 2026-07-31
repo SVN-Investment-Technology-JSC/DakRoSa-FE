@@ -9,6 +9,8 @@ import type {
 export const workflowApi = {
   getDefinitions: () =>
     apiRequest<WorkflowDefinition[]>('/workflow/definitions'),
+  getArchivedDefinitions: () =>
+    apiRequest<WorkflowDefinition[]>('/workflow/definitions/archived'),
   getDefinition: (id: string) =>
     apiRequest<WorkflowDefinition>(`/workflow/definitions/${id}`),
   createDefinition: (input: {
@@ -43,6 +45,15 @@ export const workflowApi = {
     apiRequest<WorkflowDefinition>(`/workflow/definitions/${id}/archive`, {
       method: 'PATCH',
     }),
+  restore: (id: string) =>
+    apiRequest<WorkflowDefinition>(`/workflow/definitions/${id}/restore`, {
+      method: 'PATCH',
+    }),
+  deletePermanently: (id: string) =>
+    apiRequest<{ id: string; deleted: true }>(
+      `/workflow/definitions/${id}/permanent`,
+      { method: 'DELETE' },
+    ),
   getInstance: (id: string) =>
     apiRequest<WorkflowInstance>(`/workflow/instances/${id}`),
   getMyWorkItems: () => apiRequest('/workflow/work-items/mine'),

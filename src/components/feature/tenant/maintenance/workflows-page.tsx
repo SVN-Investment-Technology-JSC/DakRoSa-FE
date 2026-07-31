@@ -2,6 +2,8 @@
 
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowRight,
   CheckCircle2,
   CircleDot,
@@ -20,6 +22,7 @@ import {
   UserRoundCheck,
   Wrench,
 } from 'lucide-react';
+import { Popconfirm } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Protected } from '@/components/protected';
@@ -366,6 +369,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const canManage = hasPermission(user, PERMISSIONS.WORKFLOW_DEFINITION_MANAGE);
   const canPublish = hasPermission(user, PERMISSIONS.WORKFLOW_DEFINITION_PUBLISH);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const [archivedDefinitions, setArchivedDefinitions] = useState<
+    WorkflowDefinition[]
+  >([]);
   const [selected, setSelected] = useState<WorkflowDefinition | null>(null);
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [transitions, setTransitions] = useState<WorkflowTransition[]>([]);
@@ -374,6 +380,11 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  const [archiveBusyId, setArchiveBusyId] = useState('');
+  const [definitionPendingDeletion, setDefinitionPendingDeletion] =
+    useState<WorkflowDefinition | null>(null);
   const [createForm, setCreateForm] = useState({ key: '', name: '', description: '' });
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -705,6 +716,76 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     }
   };
 
+  const openArchivedDefinitions = async () => {
+    setArchiveOpen(true);
+    setLoadingArchived(true);
+    try {
+      setArchivedDefinitions(await workflowApi.getArchivedDefinitions());
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Không thể tải danh sách quy trình lưu trữ.',
+      );
+    } finally {
+      setLoadingArchived(false);
+    }
+  };
+
+  const archiveSelectedDefinition = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await workflowApi.archive(selected.id);
+      toast.success('Đã lưu trữ quy trình.');
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Không thể lưu trữ quy trình.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restoreArchivedDefinition = async (definition: WorkflowDefinition) => {
+    setArchiveBusyId(definition.id);
+    try {
+      const restored = await workflowApi.restore(definition.id);
+      setArchivedDefinitions((current) =>
+        current.filter((item) => item.id !== definition.id),
+      );
+      await load(restored.id);
+      toast.success('Đã khôi phục quy trình.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Không thể khôi phục quy trình.',
+      );
+    } finally {
+      setArchiveBusyId('');
+    }
+  };
+
+  const deleteArchivedDefinition = async (definition: WorkflowDefinition) => {
+    setArchiveBusyId(definition.id);
+    try {
+      await workflowApi.deletePermanently(definition.id);
+      setArchivedDefinitions((current) =>
+        current.filter((item) => item.id !== definition.id),
+      );
+      setDefinitionPendingDeletion(null);
+      toast.success('Đã xóa vĩnh viễn quy trình.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Không thể xóa vĩnh viễn quy trình.',
+      );
+    } finally {
+      setArchiveBusyId('');
+    }
+  };
+
   const create = async () => {
     if (!createForm.key || !createForm.name.trim()) {
       toast.error('Vui lòng nhập mã và tên quy trình.');
@@ -748,15 +829,25 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         title="Mẫu quy trình"
         description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
-          canManage ? (
+          <div className="flex flex-wrap gap-2">
             <Button
-              className="bg-white text-[#194934] hover:bg-emerald-50"
-              onClick={() => setCreateOpen(true)}
+              variant="outline"
+              className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              onClick={() => void openArchivedDefinitions()}
             >
-              <Plus />
-              Tạo quy trình
+              <Archive />
+              Quy trình lưu trữ
             </Button>
-          ) : null
+            {canManage ? (
+              <Button
+                className="bg-white text-[#194934] hover:bg-emerald-50"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus />
+                Tạo quy trình
+              </Button>
+            ) : null}
+          </div>
         }
       >
         <div className="grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]">
@@ -809,6 +900,26 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   <Copy />
                   Nhân bản quy trình
                 </Button>
+                {canManage ? (
+                  <Popconfirm
+                    title="Lưu trữ quy trình?"
+                    description={`Quy trình “${selected.name}” sẽ được chuyển sang danh sách lưu trữ và có thể khôi phục.`}
+                    okText="Lưu trữ"
+                    cancelText="Hủy"
+                    okButtonProps={{ danger: true }}
+                    disabled={saving}
+                    onConfirm={() => void archiveSelectedDefinition()}
+                  >
+                    <Button
+                      variant="outline"
+                      className="mt-2 w-full border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                      disabled={saving}
+                    >
+                      <Archive />
+                      Lưu trữ quy trình
+                    </Button>
+                  </Popconfirm>
+                ) : null}
               </div>
             ) : null}
 
@@ -1486,6 +1597,128 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </aside>
         </div>
       </MaintenanceShell>
+
+      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Quy trình đã lưu trữ</DialogTitle>
+            <DialogDescription>
+              Khôi phục quy trình để tiếp tục sử dụng. Xóa vĩnh viễn chỉ được
+              thực hiện trong danh sách này và không thể hoàn tác.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="h-[520px] space-y-3 overflow-y-auto py-2">
+            {loadingArchived ? (
+              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[#758078]">
+                Đang tải danh sách lưu trữ…
+              </div>
+            ) : null}
+            {!loadingArchived && !archivedDefinitions.length ? (
+              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[#758078]">
+                Chưa có quy trình nào được lưu trữ.
+              </div>
+            ) : null}
+            {archivedDefinitions.map((definition) => {
+              const busy = archiveBusyId === definition.id;
+              return (
+                <div
+                  key={definition.id}
+                  className="rounded-xl border border-[#DCE5DB] bg-[#F8FAF7] p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong className="text-sm text-[#2F3C34]">
+                          {definition.name}
+                        </strong>
+                        <Badge variant="outline" className="border-slate-300 text-slate-600">
+                          Đã lưu trữ
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-[#748078]">
+                        {definition.key} · Khôi phục về{' '}
+                        {definition.currentVersionId ? 'Công bố' : 'Nháp'}
+                      </p>
+                      {definition.description ? (
+                        <p className="mt-2 text-sm text-[#59645D]">
+                          {definition.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    {canManage ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void restoreArchivedDefinition(definition)}
+                        >
+                          <ArchiveRestore />
+                          Khôi phục
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          disabled={busy}
+                          onClick={() => setDefinitionPendingDeletion(definition)}
+                        >
+                          <Trash2 />
+                          Xóa vĩnh viễn
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveOpen(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(definitionPendingDeletion)}
+        onOpenChange={(open) => {
+          if (!open) setDefinitionPendingDeletion(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xóa vĩnh viễn quy trình?</DialogTitle>
+            <DialogDescription>
+              {definitionPendingDeletion
+                ? `Quy trình “${definitionPendingDeletion.name}” sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác.`
+                : 'Hành động này không thể hoàn tác.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={Boolean(archiveBusyId)}
+              onClick={() => setDefinitionPendingDeletion(null)}
+            >
+              Hủy
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!definitionPendingDeletion || Boolean(archiveBusyId)}
+              onClick={() => {
+                if (definitionPendingDeletion) {
+                  void deleteArchivedDefinition(definitionPendingDeletion);
+                }
+              }}
+            >
+              <Trash2 />
+              Xóa vĩnh viễn
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

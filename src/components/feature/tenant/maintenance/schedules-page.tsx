@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { Protected } from '@/components/protected';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { equipmentApi } from '@/lib/api-equipment';
 import { maintenanceApi } from '@/lib/api-maintenance';
@@ -306,10 +316,10 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
     if (wizardStep === 1) {
       return Boolean(
         form.code &&
-          form.name.trim() &&
-          form.jobPlanId &&
-          form.workflowDefinitionId &&
-          form.startDate,
+        form.name.trim() &&
+        form.jobPlanId &&
+        form.workflowDefinitionId &&
+        form.startDate,
       );
     }
     if (wizardStep === 2) return form.targetIds.length > 0;
@@ -367,26 +377,26 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
   };
 
   const schedulePayload = (): CreateScheduleInput => ({
-        code: form.code,
-        name: form.name,
-        description: form.description || undefined,
-        siteId: form.siteId || undefined,
-        jobPlanId: form.jobPlanId,
-        workflowDefinitionId: form.workflowDefinitionId,
-        defaultAssigneeId: form.assigneeId || undefined,
-        defaultTechnicalReviewerId: form.reviewerId || undefined,
-        timezone,
-        startDate: form.startDate,
-        endDate: form.endDate || undefined,
-        reminderMinutes: form.reminderMinutes
-          .split(',')
-          .map((value) => Number(value.trim()))
-          .filter((value) => Number.isInteger(value) && value >= 0),
-        targets: form.targetIds.map((targetId) => ({
-          targetType: 'EQUIPMENT',
-          targetId,
-        })),
-        triggers: form.triggers.map(triggerPayload),
+    code: form.code,
+    name: form.name,
+    description: form.description || undefined,
+    siteId: form.siteId || undefined,
+    jobPlanId: form.jobPlanId,
+    workflowDefinitionId: form.workflowDefinitionId,
+    defaultAssigneeId: form.assigneeId || undefined,
+    defaultTechnicalReviewerId: form.reviewerId || undefined,
+    timezone,
+    startDate: form.startDate,
+    endDate: form.endDate || undefined,
+    reminderMinutes: form.reminderMinutes
+      .split(',')
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isInteger(value) && value >= 0),
+    targets: form.targetIds.map((targetId) => ({
+      targetType: 'EQUIPMENT',
+      targetId,
+    })),
+    triggers: form.triggers.map(triggerPayload),
   });
 
   const saveSchedule = async () => {
@@ -606,9 +616,9 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
                 {canManage ? (
                   <div className="flex flex-wrap items-start justify-end gap-2">
                     {schedule.status === 'draft' &&
-                    schedule.targets.every(
-                      (target) => target.targetType === 'EQUIPMENT',
-                    ) ? (
+                      schedule.targets.every(
+                        (target) => target.targetType === 'EQUIPMENT',
+                      ) ? (
                       <Button
                         variant="outline"
                         onClick={() => editSchedule(schedule)}
@@ -657,8 +667,8 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
       </MaintenanceShell>
 
       <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
-        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex h-[min(86vh,780px)] w-[calc(100vw-2rem)] max-w-[1280px] flex-col gap-0 overflow-hidden border-[#DCE6DB] bg-[#F8FAF7] p-0 sm:rounded-xl [&_input]:bg-white [&_textarea]:bg-white">
+          <DialogHeader className="shrink-0 border-b border-[#E2E9E1] bg-white px-6 py-5 pr-12">
             <DialogTitle>
               {editingId ? 'Chỉnh sửa kế hoạch nháp' : 'Lập kế hoạch bảo trì'}
             </DialogTitle>
@@ -670,13 +680,12 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid shrink-0 grid-cols-4 gap-2 border-b border-[#E2E9E1] bg-[#FAFCF9] px-6 py-3.5">
             {[1, 2, 3, 4].map((step) => (
               <div key={step} className="grid gap-1">
                 <span
-                  className={`h-1.5 rounded-full ${
-                    step <= wizardStep ? 'bg-emerald-500' : 'bg-[#E2E8E1]'
-                  }`}
+                  className={`h-1.5 rounded-full ${step <= wizardStep ? 'bg-emerald-500' : 'bg-[#E2E8E1]'
+                    }`}
                 />
                 <span className="hidden text-[10px] font-bold text-[#7A857D] sm:block">
                   {step}. {['Nền tảng', 'Thiết bị', 'Trigger', 'Phân công'][step - 1]}
@@ -685,555 +694,600 @@ export function SchedulesPage({ tenantSlug }: { tenantSlug: string }) {
             ))}
           </div>
 
-          <div className="min-h-[390px] py-2">
-            {wizardStep === 1 ? (
-              <div className="grid gap-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Mã kế hoạch *
-                    <Input
-                      value={form.code}
-                      placeholder="SCH-TURBINE-01"
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          code: event.target.value
-                            .toUpperCase()
-                            .replace(/[^A-Z0-9_-]/g, ''),
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Nhà máy
-                    <select
-                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                      value={form.siteId}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          siteId: event.target.value,
-                          targetIds: [],
-                        }))
-                      }
-                    >
-                      <option value="">Toàn doanh nghiệp</option>
-                      {sites.map((site) => (
-                        <option key={site.id} value={site.id}>
-                          {site.code} · {site.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="grid gap-1.5 text-sm font-bold">
-                  Tên kế hoạch *
-                  <Input
-                    value={form.name}
-                    placeholder="Bảo dưỡng tuabin hàng tháng"
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, name: event.target.value }))
-                    }
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm font-bold">
-                  Mô tả
-                  <Textarea
-                    rows={3}
-                    value={form.description}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Mẫu công việc đã công bố *
-                    <select
-                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                      value={form.jobPlanId}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          jobPlanId: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Chọn mẫu công việc</option>
-                      {publishedPlans.map((plan) => (
-                        <option key={plan.id} value={plan.id}>
-                          {plan.code} · {plan.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Quy trình đã công bố *
-                    <select
-                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                      value={form.workflowDefinitionId}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          workflowDefinitionId: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Chọn quy trình</option>
-                      {publishedWorkflows.map((workflow) => (
-                        <option key={workflow.id} value={workflow.id}>
-                          {workflow.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Bắt đầu *
-                    <Input
-                      type="date"
-                      value={form.startDate}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          startDate: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Kết thúc (tùy chọn)
-                    <Input
-                      type="date"
-                      value={form.endDate}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          endDate: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
-              </div>
-            ) : null}
-
-            {wizardStep === 2 ? (
-              <div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <strong className="text-sm text-[#334039]">Chọn thiết bị áp dụng</strong>
-                    <p className="mt-1 text-xs text-[#7B857E]">
-                      Có thể chọn nhiều thiết bị; nhóm thiết bị được hỗ trợ qua API.
-                    </p>
-                  </div>
-                  <Badge variant="outline">{form.targetIds.length} đã chọn</Badge>
-                </div>
-                <div className="mt-4 grid max-h-[340px] gap-2 overflow-y-auto sm:grid-cols-2">
-                  {filteredEquipment.map((item) => {
-                    const checked = form.targetIds.includes(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => toggleTarget(item.id)}
-                        className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
-                          checked
-                            ? 'border-emerald-300 bg-emerald-50'
-                            : 'border-[#E0E7DF] hover:border-[#C9D6C8]'
-                        }`}
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="min-h-[390px] px-6 py-5">
+              {wizardStep === 1 ? (
+                <div className="grid gap-4">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Mã kế hoạch *
+                      <Input
+                        value={form.code}
+                        placeholder="SCH-TURBINE-01"
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            code: event.target.value
+                              .toUpperCase()
+                              .replace(/[^A-Z0-9_-]/g, ''),
+                          }))
+                        }
+                      />
+                    </Label>
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Nhà máy
+                      <Select
+                        value={form.siteId || '__all__'}
+                        onValueChange={(siteId) =>
+                          setForm((current) => ({
+                            ...current,
+                            siteId: siteId === '__all__' ? '' : siteId,
+                            targetIds: [],
+                          }))
+                        }
                       >
-                        <span
-                          className={`grid size-5 place-items-center rounded border ${
-                            checked
-                              ? 'border-emerald-600 bg-emerald-600 text-white'
-                              : 'border-[#C7D0C7] bg-white'
-                          }`}
-                        >
-                          {checked ? <Check size={13} /> : null}
-                        </span>
-                        <span className="min-w-0">
-                          <strong className="block truncate text-sm text-[#354139]">
-                            {item.name}
-                          </strong>
-                          <span className="text-xs text-[#7C867F]">
-                            {item.code} · {item.category || 'Chưa phân loại'}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {!filteredEquipment.length ? (
-                  <div className="mt-8 text-center text-sm text-[#7A857D]">
-                    Nhà máy này chưa có thiết bị phù hợp.
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Toàn doanh nghiệp" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__all__">Toàn doanh nghiệp</SelectItem>
+                          {sites.map((site) => (
+                            <SelectItem key={site.id} value={site.id}>
+                              {site.code} · {site.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
                   </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {wizardStep === 3 ? (
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <strong className="text-sm text-[#334039]">Điều kiện sinh việc</strong>
-                    <p className="mt-1 text-xs text-[#7B857E]">
-                      Một kế hoạch có thể có nhiều trigger độc lập.
-                    </p>
+                  <Label className="grid gap-1.5 text-sm font-bold">
+                    Tên kế hoạch *
+                    <Input
+                      value={form.name}
+                      placeholder="Bảo dưỡng tuabin hàng tháng"
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                    />
+                  </Label>
+                  <Label className="grid gap-1.5 text-sm font-bold">
+                    Mô tả
+                    <Textarea
+                      rows={3}
+                      value={form.description}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                    />
+                  </Label>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Mẫu công việc đã công bố *
+                      <Select
+                        value={form.jobPlanId || '__none__'}
+                        onValueChange={(jobPlanId) =>
+                          setForm((current) => ({
+                            ...current,
+                            jobPlanId: jobPlanId === '__none__' ? '' : jobPlanId,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Chọn mẫu công việc" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__none__">Chọn mẫu công việc</SelectItem>
+                          {publishedPlans.map((plan) => (
+                            <SelectItem key={plan.id} value={plan.id}>
+                              {plan.code} · {plan.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Quy trình đã công bố <span className="text-red-500">*</span>
+                      <Select
+                        value={form.workflowDefinitionId || '__none__'}
+                        onValueChange={(workflowDefinitionId) =>
+                          setForm((current) => ({
+                            ...current,
+                            workflowDefinitionId:
+                              workflowDefinitionId === '__none__'
+                                ? ''
+                                : workflowDefinitionId,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Chọn quy trình" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__none__">Chọn quy trình</SelectItem>
+                          {publishedWorkflows.map((workflow) => (
+                            <SelectItem key={workflow.id} value={workflow.id}>
+                              {workflow.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setForm((current) => ({
-                        ...current,
-                        triggers: [...current.triggers, makeTrigger()],
-                      }))
-                    }
-                  >
-                    <Plus />
-                    Thêm trigger
-                  </Button>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Bắt đầu *
+                      <Input
+                        type="date"
+                        value={form.startDate}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            startDate: event.target.value,
+                          }))
+                        }
+                      />
+                    </Label>
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Kết thúc (tùy chọn)
+                      <Input
+                        type="date"
+                        value={form.endDate}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            endDate: event.target.value,
+                          }))
+                        }
+                      />
+                    </Label>
+                  </div>
                 </div>
-                {form.triggers.map((trigger, index) => {
-                  const meta = triggerMeta[trigger.type];
-                  const Icon = meta.icon;
-                  return (
-                    <div
-                      key={trigger.localId}
-                      className="grid gap-3 rounded-2xl border border-[#DEE6DD] bg-[#FAFCF9] p-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className={`grid size-9 place-items-center rounded-xl ${meta.tone}`}>
-                          <Icon size={17} />
-                        </span>
-                        <select
-                          className="h-9 flex-1 rounded-md border border-input bg-white px-3 text-sm font-bold"
-                          value={trigger.type}
-                          onChange={(event) =>
-                            updateTrigger(trigger.localId, {
-                              type: event.target.value as MaintenanceTriggerType,
-                            })
-                          }
-                        >
-                          {(Object.keys(triggerMeta) as MaintenanceTriggerType[]).map(
-                            (type) => (
-                              <option key={type} value={type}>
-                                {triggerMeta[type].label}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                        {form.triggers.length > 1 ? (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-red-600"
-                            aria-label={`Xóa trigger ${index + 1}`}
-                            onClick={() =>
-                              setForm((current) => ({
-                                ...current,
-                                triggers: current.triggers.filter(
-                                  (item) => item.localId !== trigger.localId,
-                                ),
-                              }))
-                            }
-                          >
-                            <Trash2 />
-                          </Button>
-                        ) : null}
-                      </div>
+              ) : null}
 
-                      {trigger.type === 'TIME_RRULE' ? (
-                        <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
-                          <label className="grid gap-1 text-xs font-bold">
-                            Quy luật lặp
-                            <select
-                              className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                              value={trigger.rrule}
-                              onChange={(event) =>
-                                updateTrigger(trigger.localId, {
-                                  rrule: event.target.value,
-                                })
-                              }
-                            >
-                              <option value="FREQ=DAILY;INTERVAL=1">Mỗi ngày</option>
-                              <option value="FREQ=WEEKLY;INTERVAL=1">Mỗi tuần</option>
-                              <option value="FREQ=MONTHLY;INTERVAL=1">Mỗi tháng</option>
-                              <option value="FREQ=MONTHLY;INTERVAL=3">Mỗi quý</option>
-                              <option value="FREQ=YEARLY;INTERVAL=1">Mỗi năm</option>
-                            </select>
-                          </label>
-                          <label className="grid gap-1 text-xs font-bold">
-                            Giờ thực hiện
-                            <Input
-                              type="time"
-                              value={trigger.time}
-                              onChange={(event) =>
-                                updateTrigger(trigger.localId, {
-                                  time: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
-                      ) : null}
-
-                      {trigger.type === 'METER_THRESHOLD' ? (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="grid gap-1 text-xs font-bold">
-                            Đồng hồ/chỉ số
-                            <select
-                              className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                              value={trigger.meterId}
-                              onChange={(event) =>
-                                updateTrigger(trigger.localId, {
-                                  meterId: event.target.value,
-                                })
-                              }
-                            >
-                              <option value="">Chọn chỉ số</option>
-                              {meters
-                                .filter((meter) =>
-                                  form.targetIds.includes(meter.equipmentId),
-                                )
-                                .map((meter) => (
-                                  <option key={meter.id} value={meter.id}>
-                                    {meter.name} ({meter.unit})
-                                  </option>
-                                ))}
-                            </select>
-                          </label>
-                          <label className="grid gap-1 text-xs font-bold">
-                            Mỗi khi tăng thêm
-                            <Input
-                              type="number"
-                              min={0}
-                              value={trigger.threshold}
-                              onChange={(event) =>
-                                updateTrigger(trigger.localId, {
-                                  threshold: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
-                      ) : null}
-
-                      {['DOMAIN_EVENT', 'CONDITION'].includes(trigger.type) ? (
-                        <div className="grid gap-3">
-                          <label className="grid gap-1 text-xs font-bold">
-                            Mã sự kiện
-                            <Input
-                              value={trigger.eventKey}
-                              placeholder="equipment.alarm.raised"
-                              onChange={(event) =>
-                                updateTrigger(trigger.localId, {
-                                  eventKey: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                          {trigger.type === 'CONDITION' ? (
-                            <div className="grid grid-cols-[1fr_110px_1fr] gap-2">
-                              <label className="grid gap-1 text-[11px] font-bold">
-                                Trường dữ liệu
-                                <Input
-                                  value={trigger.conditionFact}
-                                  onChange={(event) =>
-                                    updateTrigger(trigger.localId, {
-                                      conditionFact: event.target.value,
-                                    })
-                                  }
-                                />
-                              </label>
-                              <label className="grid gap-1 text-[11px] font-bold">
-                                So sánh
-                                <select
-                                  className="h-9 rounded-md border border-input bg-white px-2 text-sm"
-                                  value={trigger.conditionOp}
-                                  onChange={(event) =>
-                                    updateTrigger(trigger.localId, {
-                                      conditionOp: event.target
-                                        .value as TriggerDraft['conditionOp'],
-                                    })
-                                  }
-                                >
-                                  <option value="eq">Bằng</option>
-                                  <option value="neq">Khác</option>
-                                  <option value="gt">Lớn hơn</option>
-                                  <option value="gte">≥</option>
-                                  <option value="contains">Chứa</option>
-                                </select>
-                              </label>
-                              <label className="grid gap-1 text-[11px] font-bold">
-                                Giá trị
-                                <Input
-                                  value={trigger.conditionValue}
-                                  onChange={(event) =>
-                                    updateTrigger(trigger.localId, {
-                                      conditionValue: event.target.value,
-                                    })
-                                  }
-                                />
-                              </label>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
+              {wizardStep === 2 ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <strong className="text-sm text-[#334039]">Chọn thiết bị áp dụng</strong>
+                      <p className="mt-1 text-xs text-[#7B857E]">
+                        Có thể chọn nhiều thiết bị; nhóm thiết bị được hỗ trợ qua API.
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {wizardStep === 4 ? (
-              <div className="grid gap-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Người thực hiện mặc định
-                    <select
-                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                      value={form.assigneeId}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          assigneeId: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Quy trình tự xác định</option>
-                      {users.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Người kiểm tra kỹ thuật
-                    <select
-                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                      value={form.reviewerId}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          reviewerId: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Quy trình tự xác định</option>
-                      {users.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="grid gap-1.5 text-sm font-bold">
-                  Nhắc trước (phút, phân cách bằng dấu phẩy)
-                  <Input
-                    value={form.reminderMinutes}
-                    placeholder="1440, 120"
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        reminderMinutes: event.target.value,
-                      }))
-                    }
-                  />
-                  <span className="text-xs font-normal text-[#7A857D]">
-                    Ví dụ 1440 = trước 1 ngày, 120 = trước 2 giờ. Kênh release đầu:
-                    thông báo trong ứng dụng.
-                  </span>
-                </label>
-                <label className="flex items-center gap-3 rounded-2xl border border-[#DCE6DB] bg-emerald-50/60 p-4">
-                  <input
-                    type="checkbox"
-                    checked={form.activateNow}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        activateNow: event.target.checked,
-                      }))
-                    }
-                  />
-                  <span>
-                    <strong className="block text-sm text-[#32503D]">
-                      Kích hoạt ngay sau khi lưu
-                    </strong>
-                    <span className="mt-0.5 block text-xs text-[#66806E]">
-                      Hệ thống sinh trước lịch 90 ngày cho trigger thời gian.
-                    </span>
-                  </span>
-                </label>
-                <div className="grid gap-2 rounded-2xl bg-[#F5F8F4] p-4 text-sm text-[#4C5951]">
-                  <span className="flex items-center gap-2">
-                    <UsersRound size={16} className="text-emerald-700" />
-                    {form.targetIds.length} thiết bị · {form.triggers.length} trigger
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <CalendarClock size={16} className="text-emerald-700" />
-                    Bắt đầu {new Date(`${form.startDate}T00:00:00`).toLocaleDateString('vi-VN')}
-                  </span>
-                </div>
-                <div className="rounded-2xl border border-[#DCE6DB] bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <strong className="block text-sm text-[#35443A]">
-                        Xem trước chu kỳ
-                      </strong>
-                      <span className="text-xs text-[#78837B]">
-                        Kiểm tra các mốc RRULE trước khi lưu kế hoạch.
-                      </span>
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void loadPreview()}
-                      disabled={previewing}
-                    >
-                      <Eye />
-                      {previewing ? 'Đang tính…' : 'Xem trước'}
-                    </Button>
+                    <Badge variant="outline">{form.targetIds.length} đã chọn</Badge>
                   </div>
-                  {preview ? (
-                    <div className="mt-3 grid gap-2">
-                      <span className="text-xs font-bold text-[#5D6B62]">
-                        {preview.items.length} mốc từ {preview.from} đến {preview.to}
-                        {preview.truncated ? ' (đã rút gọn)' : ''}
-                      </span>
-                      <div className="grid max-h-40 gap-1 overflow-y-auto rounded-xl bg-[#F6F8F5] p-3 sm:grid-cols-2">
-                        {preview.items.slice(0, 20).map((item) => (
-                          <span
-                            key={`${item.triggerIndex}-${item.plannedStartAt}`}
-                            className="text-xs text-[#58655D]"
+                  <ScrollArea className="mt-4 h-[340px] pr-3">
+                    <div className="grid gap-2 lg:grid-cols-2">
+                      {filteredEquipment.map((item) => {
+                        const checked = form.targetIds.includes(item.id);
+                        return (
+                          <Button
+                            key={item.id}
+                            type="button"
+                            variant="outline"
+                            aria-pressed={checked}
+                            onClick={() => toggleTarget(item.id)}
+                            className={`h-auto w-full justify-start gap-3 rounded-xl p-3 text-left transition ${checked
+                              ? 'border-emerald-300 bg-emerald-50'
+                              : 'border-[#E0E7DF] hover:border-[#C9D6C8]'
+                              }`}
                           >
-                            Trigger {item.triggerIndex + 1} ·{' '}
-                            {new Date(item.plannedStartAt).toLocaleString('vi-VN', {
-                              timeZone: preview.timezone,
-                            })}
-                          </span>
-                        ))}
-                        {!preview.items.length ? (
-                          <span className="text-xs text-amber-700">
-                            Không có mốc thời gian trong khoảng xem trước.
-                          </span>
-                        ) : null}
-                      </div>
+                            <span
+                              className={`grid size-5 place-items-center rounded border ${checked
+                                ? 'border-emerald-600 bg-emerald-600 text-white'
+                                : 'border-[#C7D0C7] bg-white'
+                                }`}
+                            >
+                              {checked ? <Check size={13} /> : null}
+                            </span>
+                            <span className="min-w-0">
+                              <strong className="block truncate text-sm text-[#354139]">
+                                {item.name}
+                              </strong>
+                              <span className="text-xs text-[#7C867F]">
+                                {item.code} · {item.category || 'Chưa phân loại'}
+                              </span>
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                  {!filteredEquipment.length ? (
+                    <div className="mt-8 text-center text-sm text-[#7A857D]">
+                      Nhà máy này chưa có thiết bị phù hợp.
                     </div>
                   ) : null}
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
 
-          <DialogFooter className="border-t border-[#E7ECE6] pt-4">
+              {wizardStep === 3 ? (
+                <div className="grid gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <strong className="text-sm text-[#334039]">Điều kiện sinh việc</strong>
+                      <p className="mt-1 text-xs text-[#7B857E]">
+                        Một kế hoạch có thể có nhiều trigger độc lập.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          triggers: [...current.triggers, makeTrigger()],
+                        }))
+                      }
+                    >
+                      <Plus />
+                      Thêm trigger
+                    </Button>
+                  </div>
+                  {form.triggers.map((trigger, index) => {
+                    const meta = triggerMeta[trigger.type];
+                    const Icon = meta.icon;
+                    return (
+                      <div
+                        key={trigger.localId}
+                        className="grid gap-3 rounded-2xl border border-[#DEE6DD] bg-[#FAFCF9] p-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`grid size-9 place-items-center rounded-xl ${meta.tone}`}>
+                            <Icon size={17} />
+                          </span>
+                          <Select
+                            value={trigger.type}
+                            onValueChange={(type) =>
+                              updateTrigger(trigger.localId, {
+                                type: type as MaintenanceTriggerType,
+                              })
+                            }
+                          >
+                            <SelectTrigger className="flex-1 bg-white font-bold">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent position="popper" align="start">
+                              {(Object.keys(triggerMeta) as MaintenanceTriggerType[]).map(
+                                (type) => (
+                                  <SelectItem key={type} value={type}>
+                                    {triggerMeta[type].label}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectContent>
+                          </Select>
+                          {form.triggers.length > 1 ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-red-600"
+                              aria-label={`Xóa trigger ${index + 1}`}
+                              onClick={() =>
+                                setForm((current) => ({
+                                  ...current,
+                                  triggers: current.triggers.filter(
+                                    (item) => item.localId !== trigger.localId,
+                                  ),
+                                }))
+                              }
+                            >
+                              <Trash2 />
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        {trigger.type === 'TIME_RRULE' ? (
+                          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_130px]">
+                            <Label className="grid gap-1 text-xs font-bold">
+                              Quy luật lặp
+                              <Select
+                                value={trigger.rrule}
+                                onValueChange={(rrule) =>
+                                  updateTrigger(trigger.localId, {
+                                    rrule,
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="w-full bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent position="popper" align="start">
+                                  <SelectItem value="FREQ=DAILY;INTERVAL=1">Mỗi ngày</SelectItem>
+                                  <SelectItem value="FREQ=WEEKLY;INTERVAL=1">Mỗi tuần</SelectItem>
+                                  <SelectItem value="FREQ=MONTHLY;INTERVAL=1">Mỗi tháng</SelectItem>
+                                  <SelectItem value="FREQ=MONTHLY;INTERVAL=3">Mỗi quý</SelectItem>
+                                  <SelectItem value="FREQ=YEARLY;INTERVAL=1">Mỗi năm</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Label>
+                            <Label className="grid gap-1 text-xs font-bold">
+                              Giờ thực hiện
+                              <Input
+                                type="time"
+                                value={trigger.time}
+                                onChange={(event) =>
+                                  updateTrigger(trigger.localId, {
+                                    time: event.target.value,
+                                  })
+                                }
+                              />
+                            </Label>
+                          </div>
+                        ) : null}
+
+                        {trigger.type === 'METER_THRESHOLD' ? (
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <Label className="grid gap-1 text-xs font-bold">
+                              Đồng hồ/chỉ số
+                              <Select
+                                value={trigger.meterId || '__none__'}
+                                onValueChange={(meterId) =>
+                                  updateTrigger(trigger.localId, {
+                                    meterId: meterId === '__none__' ? '' : meterId,
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="w-full bg-white">
+                                  <SelectValue placeholder="Chọn chỉ số" />
+                                </SelectTrigger>
+                                <SelectContent position="popper" align="start">
+                                  <SelectItem value="__none__">Chọn chỉ số</SelectItem>
+                                  {meters
+                                    .filter((meter) =>
+                                      form.targetIds.includes(meter.equipmentId),
+                                    )
+                                    .map((meter) => (
+                                      <SelectItem key={meter.id} value={meter.id}>
+                                        {meter.name} ({meter.unit})
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </Label>
+                            <Label className="grid gap-1 text-xs font-bold">
+                              Mỗi khi tăng thêm
+                              <Input
+                                type="number"
+                                min={0}
+                                value={trigger.threshold}
+                                onChange={(event) =>
+                                  updateTrigger(trigger.localId, {
+                                    threshold: event.target.value,
+                                  })
+                                }
+                              />
+                            </Label>
+                          </div>
+                        ) : null}
+
+                        {['DOMAIN_EVENT', 'CONDITION'].includes(trigger.type) ? (
+                          <div className="grid gap-3">
+                            <Label className="grid gap-1 text-xs font-bold">
+                              Mã sự kiện
+                              <Input
+                                value={trigger.eventKey}
+                                placeholder="equipment.alarm.raised"
+                                onChange={(event) =>
+                                  updateTrigger(trigger.localId, {
+                                    eventKey: event.target.value,
+                                  })
+                                }
+                              />
+                            </Label>
+                            {trigger.type === 'CONDITION' ? (
+                              <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_110px_minmax(0,1fr)]">
+                                <Label className="grid gap-1 text-[11px] font-bold">
+                                  Trường dữ liệu
+                                  <Input
+                                    value={trigger.conditionFact}
+                                    onChange={(event) =>
+                                      updateTrigger(trigger.localId, {
+                                        conditionFact: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </Label>
+                                <Label className="grid gap-1 text-[11px] font-bold">
+                                  So sánh
+                                  <Select
+                                    value={trigger.conditionOp}
+                                    onValueChange={(conditionOp) =>
+                                      updateTrigger(trigger.localId, {
+                                        conditionOp:
+                                          conditionOp as TriggerDraft['conditionOp'],
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full bg-white px-2">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent position="popper" align="start">
+                                      <SelectItem value="eq">Bằng</SelectItem>
+                                      <SelectItem value="neq">Khác</SelectItem>
+                                      <SelectItem value="gt">Lớn hơn</SelectItem>
+                                      <SelectItem value="gte">≥</SelectItem>
+                                      <SelectItem value="contains">Chứa</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </Label>
+                                <Label className="grid gap-1 text-[11px] font-bold">
+                                  Giá trị
+                                  <Input
+                                    value={trigger.conditionValue}
+                                    onChange={(event) =>
+                                      updateTrigger(trigger.localId, {
+                                        conditionValue: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </Label>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {wizardStep === 4 ? (
+                <div className="grid gap-4">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Người thực hiện mặc định
+                      <Select
+                        value={form.assigneeId || '__none__'}
+                        onValueChange={(assigneeId) =>
+                          setForm((current) => ({
+                            ...current,
+                            assigneeId: assigneeId === '__none__' ? '' : assigneeId,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Quy trình tự xác định" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__none__">Quy trình tự xác định</SelectItem>
+                          {users.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                    <Label className="grid gap-1.5 text-sm font-bold">
+                      Người kiểm tra kỹ thuật
+                      <Select
+                        value={form.reviewerId || '__none__'}
+                        onValueChange={(reviewerId) =>
+                          setForm((current) => ({
+                            ...current,
+                            reviewerId: reviewerId === '__none__' ? '' : reviewerId,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Quy trình tự xác định" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__none__">Quy trình tự xác định</SelectItem>
+                          {users.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                  </div>
+                  <Label className="grid gap-1.5 text-sm font-bold">
+                    Nhắc trước (phút, phân cách bằng dấu phẩy)
+                    <Input
+                      value={form.reminderMinutes}
+                      placeholder="1440, 120"
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          reminderMinutes: event.target.value,
+                        }))
+                      }
+                    />
+                    <span className="text-xs font-normal text-[#7A857D]">
+                      Ví dụ 1440 = trước 1 ngày, 120 = trước 2 giờ. Kênh release đầu:
+                      thông báo trong ứng dụng.
+                    </span>
+                  </Label>
+                  <Label className="flex items-center gap-3 rounded-2xl border border-[#DCE6DB] bg-emerald-50/60 p-4">
+                    <Checkbox
+                      checked={form.activateNow}
+                      onCheckedChange={(checked) =>
+                        setForm((current) => ({
+                          ...current,
+                          activateNow: checked === true,
+                        }))
+                      }
+                    />
+                    <span>
+                      <strong className="block text-sm text-[#32503D]">
+                        Kích hoạt ngay sau khi lưu
+                      </strong>
+                      <span className="mt-0.5 block text-xs text-[#66806E]">
+                        Hệ thống sinh trước lịch 90 ngày cho trigger thời gian.
+                      </span>
+                    </span>
+                  </Label>
+                  <div className="grid gap-2 rounded-2xl bg-[#F5F8F4] p-4 text-sm text-[#4C5951]">
+                    <span className="flex items-center gap-2">
+                      <UsersRound size={16} className="text-emerald-700" />
+                      {form.targetIds.length} thiết bị · {form.triggers.length} trigger
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <CalendarClock size={16} className="text-emerald-700" />
+                      Bắt đầu {new Date(`${form.startDate}T00:00:00`).toLocaleDateString('vi-VN')}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-[#DCE6DB] bg-white p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span>
+                        <strong className="block text-sm text-[#35443A]">
+                          Xem trước chu kỳ
+                        </strong>
+                        <span className="text-xs text-[#78837B]">
+                          Kiểm tra các mốc RRULE trước khi lưu kế hoạch.
+                        </span>
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void loadPreview()}
+                        disabled={previewing}
+                      >
+                        <Eye />
+                        {previewing ? 'Đang tính…' : 'Xem trước'}
+                      </Button>
+                    </div>
+                    {preview ? (
+                      <div className="mt-3 grid gap-2">
+                        <span className="text-xs font-bold text-[#5D6B62]">
+                          {preview.items.length} mốc từ {preview.from} đến {preview.to}
+                          {preview.truncated ? ' (đã rút gọn)' : ''}
+                        </span>
+                        <ScrollArea className="h-40 rounded-xl bg-[#F6F8F5]">
+                          <div className="grid gap-1 p-3 lg:grid-cols-2">
+                            {preview.items.slice(0, 20).map((item) => (
+                              <span
+                                key={`${item.triggerIndex}-${item.plannedStartAt}`}
+                                className="text-xs text-[#58655D]"
+                              >
+                                Trigger {item.triggerIndex + 1} ·{' '}
+                                {new Date(item.plannedStartAt).toLocaleString('vi-VN', {
+                                  timeZone: preview.timezone,
+                                })}
+                              </span>
+                            ))}
+                            {!preview.items.length ? (
+                              <span className="text-xs text-amber-700">
+                                Không có mốc thời gian trong khoảng xem trước.
+                              </span>
+                            ) : null}
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+          </ScrollArea>
+
+          <DialogFooter className="shrink-0 border-t border-[#E2E9E1] bg-white px-6 py-4">
             {wizardStep > 1 ? (
               <Button
                 variant="outline"
