@@ -1,54 +1,47 @@
 'use client';
 
-import { X } from 'lucide-react';
-import { ReactNode, useEffect, useId, useRef } from 'react';
+import * as React from 'react';
+import { XIcon } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface ModalProps {
   open: boolean;
-  title: string;
-  description?: string;
-  children: ReactNode;
-  icon?: ReactNode;
-  size?: 'default' | 'wide';
   onClose: () => void;
+  title: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
 }
 
-export function Modal({ open, title, description, children, icon, size = 'default', onClose }: ModalProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
+/**
+ * Thin Modal wrapper around the project's Dialog component.
+ * Provides a simpler API: open/onClose/title/icon/children.
+ */
+export function Modal({ open, onClose, title, icon, children }: ModalProps) {
   return (
-    <dialog
-      ref={dialogRef}
-      className={`modal-panel${size === 'wide' ? ' modal-panel-wide' : ''}`}
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-    >
-      <div className="modal-surface">
-        <div className="modal-header">
-          <div className="modal-heading">
-            {icon && <div className="modal-heading-icon">{icon}</div>}
-            <div>
-              <h2 id={titleId}>{title}</h2>
-              {description && <p>{description}</p>}
-            </div>
-          </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Đóng">
-            <X size={19} />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {icon}
+            {title}
+          </DialogTitle>
+        </DialogHeader>
+        <button
+          type="button"
+          aria-label="Đóng"
+          onClick={onClose}
+          className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+        >
+          <XIcon />
+          <span className="sr-only">Đóng</span>
+        </button>
         {children}
-      </div>
-    </dialog>
+      </DialogContent>
+    </Dialog>
   );
 }

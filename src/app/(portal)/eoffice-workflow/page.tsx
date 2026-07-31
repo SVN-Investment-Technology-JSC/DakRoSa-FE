@@ -1,5 +1,5 @@
 import { PageHeading } from '@/components/page-heading';
-import { WorkflowCanvas } from '@/components/workflow-canvas';
+import { WorkflowCanvas } from '@/components/feature/e-office/workflow/workflow-canvas';
 
 export default function EofficeWorkflowPage() {
   return (

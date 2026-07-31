@@ -69,13 +69,13 @@ jobs:
           }
 
   publish:
-    name: Publish production image
+    name: Publish ARM64 production image
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/dev/release' || github.ref == 'refs/heads/main')
     needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     environment: production
     permissions:
       contents: read
@@ -95,9 +95,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -113,7 +110,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           context: .
           file: ./Dockerfile
           target: production
@@ -127,17 +124,17 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Trigger Coolify deployment
-        if: github.ref == 'refs/heads/dev/release' && env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
-        run: >-
-          curl --fail-with-body --silent --show-error
-          --retry 2 --retry-all-errors
-          --request GET "$COOLIFY_WEBHOOK"
-          --header "Authorization: Bearer $COOLIFY_TOKEN"
+      # - name: Trigger Coolify deployment
+      #   if: github.ref == 'refs/heads/dev/release' && env.COOLIFY_WEBHOOK != '' && env.COOLIFY_TOKEN != ''
+      #   run: >-
+      #     curl --fail-with-body --silent --show-error
+      #     --retry 2 --retry-all-errors
+      #     --request GET "$COOLIFY_WEBHOOK"
+      #     --header "Authorization: Bearer $COOLIFY_TOKEN"
 
-      - name: Report skipped Coolify deployment
-        if: github.ref == 'refs/heads/dev/release' && (env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == '')
-        run: echo "Image published; Coolify deployment skipped because repository secrets are not configured."
+      # - name: Report skipped Coolify deployment
+      #   if: github.ref == 'refs/heads/dev/release' && (env.COOLIFY_WEBHOOK == '' || env.COOLIFY_TOKEN == '')
+      #   run: echo "Image published; Coolify deployment skipped because repository secrets are not configured."
 
       - name: Report deferred production deployment
         if: github.ref == 'refs/heads/main'

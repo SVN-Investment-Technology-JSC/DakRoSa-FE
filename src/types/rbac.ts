@@ -15,3 +15,10 @@ export interface Role {
   permissions: Permission[];
 }
 
+export interface RoleInput {
+  code: string;
+  name: string;
+  description: string;
+}
+
+export type UpdateRoleInput = Pick<RoleInput, 'name' | 'description'>;

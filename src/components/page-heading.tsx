@@ -7,14 +7,23 @@ interface PageHeadingProps {
 
 export function PageHeading({ eyebrow, title, description, actions }: PageHeadingProps) {
   return (
-    <header className="page-heading">
-      <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
-        <p>{description}</p>
+    <header className="mb-6 flex flex-col justify-between gap-4 border-b border-[#DDE5DC] pb-5 sm:flex-row sm:items-end">
+      <div className="min-w-0">
+        <span className="mb-2 block text-[12px] font-black tracking-[0.12em] text-primary uppercase">
+          {eyebrow}
+        </span>
+        <h1 className="font-display text-[clamp(1.7rem,3vw,2.25rem)] leading-tight font-bold tracking-[-0.025em] text-[#2C342E]">
+          {title}
+        </h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#667067]">
+          {description}
+        </p>
       </div>
-      {actions && <div className="page-actions">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {actions}
+        </div>
+      )}
     </header>
   );
 }
-
