@@ -11,6 +11,7 @@ import {
   Diamond,
   GitFork,
   GitMerge,
+  GripVertical,
   Hand,
   Play,
   Plus,
@@ -23,11 +24,12 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Popconfirm } from 'antd';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Protected } from '@/components/protected';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { PERMISSIONS } from '@/lib/navigation';
 import { hasPermission } from '@/lib/permissions';
@@ -58,12 +68,11 @@ import type {
   WorkflowTransition,
   WorkflowValidation,
 } from '@/types/workflow';
+import {
+  WORKFLOW_NODE_DRAG_TYPE,
+  WorkflowFlowCanvas,
+} from './workflow-flow-canvas';
 import { MaintenanceShell } from './maintenance-shell';
-
-const nodeWidth = 188;
-const nodeHeight = 82;
-const canvasWidth = 1100;
-const canvasHeight = 610;
 
 const nodeMeta: Record<
   WorkflowNodeType,
@@ -252,7 +261,7 @@ function ConditionEditor({
         </Button>
       </div>
       <div className="grid grid-cols-[1fr_108px] gap-2">
-        <label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
           Trường dữ liệu
           <Input
             className="h-8 text-xs"
@@ -267,50 +276,58 @@ function ConditionEditor({
               })
             }
           />
-        </label>
-        <label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+        </Label>
+        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
           So sánh
-          <select
-            className="h-8 rounded-md border border-input bg-white px-2 text-xs"
+          <Select
             disabled={disabled}
             value={operator}
-            onChange={(event) =>
+            onValueChange={(value) =>
               onChange({
                 ...current,
-                op: event.target.value,
-                value: parseConditionValue(rawValue, event.target.value),
+                op: value,
+                value: parseConditionValue(rawValue, value),
               })
             }
           >
-            <option value="eq">Bằng</option>
-            <option value="neq">Khác</option>
-            <option value="gt">Lớn hơn</option>
-            <option value="gte">Lớn hơn/bằng</option>
-            <option value="lt">Nhỏ hơn</option>
-            <option value="lte">Nhỏ hơn/bằng</option>
-            <option value="in">Thuộc tập</option>
-            <option value="notIn">Không thuộc</option>
-            <option value="contains">Chứa</option>
-            <option value="exists">Tồn tại</option>
-          </select>
-        </label>
+            <SelectTrigger size="sm" className="w-full bg-white text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="start">
+              <SelectItem value="eq">Bằng</SelectItem>
+              <SelectItem value="neq">Khác</SelectItem>
+              <SelectItem value="gt">Lớn hơn</SelectItem>
+              <SelectItem value="gte">Lớn hơn/bằng</SelectItem>
+              <SelectItem value="lt">Nhỏ hơn</SelectItem>
+              <SelectItem value="lte">Nhỏ hơn/bằng</SelectItem>
+              <SelectItem value="in">Thuộc tập</SelectItem>
+              <SelectItem value="notIn">Không thuộc</SelectItem>
+              <SelectItem value="contains">Chứa</SelectItem>
+              <SelectItem value="exists">Tồn tại</SelectItem>
+            </SelectContent>
+          </Select>
+        </Label>
       </div>
-      <label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+      <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
         {operator === 'in' || operator === 'notIn'
           ? 'Danh sách giá trị (phân cách bằng dấu phẩy)'
           : 'Giá trị so sánh'}
         {operator === 'exists' ? (
-          <select
-            className="h-8 rounded-md border border-input bg-white px-2 text-xs"
+          <Select
             disabled={disabled}
             value={rawValue || 'true'}
-            onChange={(event) =>
-              onChange({ ...current, value: event.target.value === 'true' })
+            onValueChange={(value) =>
+              onChange({ ...current, value: value === 'true' })
             }
           >
-            <option value="true">Có tồn tại</option>
-            <option value="false">Không tồn tại</option>
-          </select>
+            <SelectTrigger size="sm" className="w-full bg-white text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="start">
+              <SelectItem value="true">Có tồn tại</SelectItem>
+              <SelectItem value="false">Không tồn tại</SelectItem>
+            </SelectContent>
+          </Select>
         ) : (
           <Input
             className="h-8 text-xs"
@@ -325,18 +342,9 @@ function ConditionEditor({
             }
           />
         )}
-      </label>
+      </Label>
     </div>
   );
-}
-
-function edgePath(source: WorkflowNode, target: WorkflowNode) {
-  const sx = Number(source.uiPosition.x ?? 0) + nodeWidth;
-  const sy = Number(source.uiPosition.y ?? 0) + nodeHeight / 2;
-  const tx = Number(target.uiPosition.x ?? 0);
-  const ty = Number(target.uiPosition.y ?? 0) + nodeHeight / 2;
-  const bend = Math.max(50, Math.abs(tx - sx) / 2);
-  return `M ${sx} ${sy} C ${sx + bend} ${sy}, ${tx - bend} ${ty}, ${tx} ${ty}`;
 }
 
 function newNode(type: WorkflowNodeType, index: number): WorkflowNode {
@@ -354,12 +362,12 @@ function newNode(type: WorkflowNodeType, index: number): WorkflowNode {
     assignees:
       type === 'HUMAN_TASK'
         ? [
-            {
-              type: 'CREATOR',
-              strategy: 'ANY',
-              config: {},
-            },
-          ]
+          {
+            type: 'CREATOR',
+            strategy: 'ANY',
+            config: {},
+          },
+        ]
         : [],
   };
 }
@@ -392,13 +400,6 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     units: [],
     positions: [],
   });
-  const [drag, setDrag] = useState<{
-    key: string;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-
   const hydrate = useCallback((definition: WorkflowDefinition) => {
     setSelected(definition);
     const graphNodes = definition.graph?.nodes ?? [];
@@ -504,6 +505,27 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     setValidation(null);
   };
 
+  const updateNodePositions = useCallback(
+    (positions: Array<{ key: string; x: number; y: number }>) => {
+      const positionByKey = new Map(
+        positions.map((position) => [position.key, position]),
+      );
+      setNodes((current) =>
+        current.map((node) => {
+          const position = positionByKey.get(node.key);
+          return position
+            ? {
+                ...node,
+                uiPosition: { x: position.x, y: position.y },
+              }
+            : node;
+        }),
+      );
+      setValidation(null);
+    },
+    [],
+  );
+
   const updateFormFields = (fields: WorkflowFormField[]) => {
     if (!activeNode) return;
     updateNode(activeNode.key, {
@@ -548,7 +570,10 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     );
   };
 
-  const addNode = (type: WorkflowNodeType) => {
+  const addNode = (
+    type: WorkflowNodeType,
+    position?: { x: number; y: number },
+  ) => {
     if (type === 'START' && nodes.some((node) => node.type === 'START')) {
       toast.error('Quy trình chỉ có một điểm bắt đầu.');
       return;
@@ -557,6 +582,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     const used = new Set(nodes.map((item) => item.key));
     let suffix = nodes.length + 1;
     while (used.has(node.key)) node.key = `${type.toLowerCase()}_${++suffix}`;
+    if (position) node.uiPosition = position;
     setNodes((current) => [...current, node]);
     setSelectedNodeKey(node.key);
     setValidation(null);
@@ -606,7 +632,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     setTransitions((current) =>
       current.map((transition) =>
         transition.sourceKey === selectedNodeKey &&
-        transition.actionKey === actionKey
+          transition.actionKey === actionKey
           ? { ...transition, ...patch }
           : transition,
       ),
@@ -805,23 +831,6 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     }
   };
 
-  const pointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag || !canvasRef.current || !canManage) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    updateNode(drag.key, {
-      uiPosition: {
-        x: Math.max(
-          10,
-          Math.min(canvasWidth - nodeWidth - 10, event.clientX - rect.left - drag.offsetX),
-        ),
-        y: Math.max(
-          10,
-          Math.min(canvasHeight - nodeHeight - 10, event.clientY - rect.top - drag.offsetY),
-        ),
-      },
-    });
-  };
-
   return (
     <Protected permission={PERMISSIONS.WORKFLOW_DEFINITION_VIEW}>
       <MaintenanceShell
@@ -858,15 +867,15 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             </div>
             <div className="max-h-[320px] space-y-1 overflow-y-auto p-2">
               {definitions.map((definition) => (
-                <button
+                <Button
                   key={definition.id}
                   type="button"
+                  variant="ghost"
                   onClick={() => void chooseDefinition(definition.id)}
-                  className={`w-full rounded-xl p-3 text-left transition ${
-                    selected?.id === definition.id
+                  className={`h-auto w-full flex-col items-stretch rounded-xl p-3 text-left whitespace-normal transition ${selected?.id === definition.id
                       ? 'bg-white shadow-sm ring-1 ring-emerald-200'
                       : 'hover:bg-white/80'
-                  }`}
+                    }`}
                 >
                   <span className="flex items-center gap-2">
                     <Route size={16} className="shrink-0 text-emerald-700" />
@@ -885,7 +894,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       {definition.status === 'published' ? 'Công bố' : 'Nháp'}
                     </Badge>
                   </span>
-                </button>
+                </Button>
               ))}
               {!loading && !definitions.length ? (
                 <div className="p-6 text-center text-sm text-[#758078]">
@@ -928,16 +937,26 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                 <span className="text-xs font-black tracking-wide text-[#78837B] uppercase">
                   Thêm node
                 </span>
+                <p className="mt-1 text-[10px] leading-4 text-[#7B867E]">
+                  Bấm để thêm nhanh hoặc kéo node vào vị trí mong muốn trên canvas.
+                </p>
                 <div className="mt-2 grid gap-1.5">
                   {(Object.keys(nodeMeta) as WorkflowNodeType[]).map((type) => {
                     const meta = nodeMeta[type];
                     const Icon = meta.icon;
                     return (
-                      <button
+                      <Button
                         key={type}
                         type="button"
+                        variant="ghost"
+                        draggable
                         onClick={() => addNode(type)}
-                        className="flex items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left transition hover:border-[#DCE5DB] hover:bg-white"
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(WORKFLOW_NODE_DRAG_TYPE, type);
+                          event.dataTransfer.setData('text/plain', type);
+                          event.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        className="h-auto w-full cursor-grab justify-start gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left whitespace-normal transition hover:border-[#DCE5DB] hover:bg-white active:cursor-grabbing"
                       >
                         <span className={`grid size-8 place-items-center rounded-lg border ${meta.color}`}>
                           <Icon size={15} />
@@ -946,7 +965,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                           <strong className="block text-xs text-[#3A463E]">{meta.label}</strong>
                           <span className="block text-[10px] text-[#859087]">{meta.description}</span>
                         </span>
-                      </button>
+                        <GripVertical className="ml-auto size-4 shrink-0 text-[#9AA49D]" />
+                      </Button>
                     );
                   })}
                 </div>
@@ -1004,129 +1024,26 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
               </div>
             </header>
 
-            <div className="overflow-auto bg-[#F7F9F6] p-4">
-              <div
-                ref={canvasRef}
-                className="relative overflow-hidden rounded-2xl border border-[#DCE4DA] bg-white shadow-inner"
-                style={{
-                  width: canvasWidth,
-                  height: canvasHeight,
-                  backgroundImage:
-                    'radial-gradient(circle, #D8E1D7 1px, transparent 1px)',
-                  backgroundSize: '20px 20px',
-                }}
-                onPointerMove={pointerMove}
-                onPointerUp={() => setDrag(null)}
-                onPointerLeave={() => setDrag(null)}
-              >
-                <svg
-                  className="pointer-events-none absolute inset-0 size-full"
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <marker
-                      id="workflow-arrow"
-                      markerWidth="8"
-                      markerHeight="8"
-                      refX="7"
-                      refY="4"
-                      orient="auto"
-                    >
-                      <path d="M0,0 L8,4 L0,8 Z" fill="#789082" />
-                    </marker>
-                  </defs>
-                  {transitions.map((transition) => {
-                    const source = nodes.find(
-                      (node) => node.key === transition.sourceKey,
-                    );
-                    const target = nodes.find(
-                      (node) => node.key === transition.targetKey,
-                    );
-                    if (!source || !target) return null;
-                    return (
-                      <path
-                        key={`${transition.sourceKey}-${transition.actionKey}`}
-                        d={edgePath(source, target)}
-                        fill="none"
-                        stroke="#789082"
-                        strokeWidth="2"
-                        markerEnd="url(#workflow-arrow)"
-                      />
-                    );
-                  })}
-                </svg>
-
-                {nodes.map((node) => {
-                  const meta = nodeMeta[node.type];
-                  const Icon = meta.icon;
-                  return (
-                    <button
-                      key={node.key}
-                      type="button"
-                      onClick={() => setSelectedNodeKey(node.key)}
-                      onPointerDown={(event) => {
-                        if (!canManage) return;
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        setDrag({
-                          key: node.key,
-                          offsetX: event.clientX - rect.left,
-                          offsetY: event.clientY - rect.top,
-                        });
-                        setSelectedNodeKey(node.key);
-                      }}
-                      className={`absolute flex items-center gap-3 rounded-2xl border-2 bg-white p-3 text-left shadow-[0_8px_24px_rgba(34,58,42,0.10)] transition ${
-                        selectedNodeKey === node.key
-                          ? 'border-emerald-500 ring-4 ring-emerald-100'
-                          : 'border-[#DCE5DB] hover:border-emerald-300'
-                      }`}
-                      style={{
-                        width: nodeWidth,
-                        height: nodeHeight,
-                        transform: `translate(${Number(node.uiPosition.x ?? 0)}px, ${Number(node.uiPosition.y ?? 0)}px)`,
-                        touchAction: 'none',
-                      }}
-                    >
-                      <span className={`grid size-9 shrink-0 place-items-center rounded-xl border ${meta.color}`}>
-                        <Icon size={17} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[10px] font-black tracking-wide text-[#849087] uppercase">
-                          {meta.label}
-                        </span>
-                        <strong className="block truncate text-sm text-[#334039]">
-                          {node.name}
-                        </strong>
-                        {node.type === 'HUMAN_TASK' ? (
-                          <span className="block truncate text-[10px] text-[#7D8880]">
-                            SLA {Number(node.config.slaMinutes ?? 0) / 60} giờ
-                          </span>
-                        ) : null}
-                      </span>
-                    </button>
-                  );
-                })}
-
-                {!nodes.length ? (
-                  <div className="absolute inset-0 grid place-items-center text-center">
-                    <div>
-                      <Route className="mx-auto text-[#9AA69D]" />
-                      <strong className="mt-3 block text-sm text-[#425047]">
-                        Chọn hoặc tạo một quy trình
-                      </strong>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+            <div className="bg-[#F7F9F6] p-4">
+              <WorkflowFlowCanvas
+                key={selected?.id ?? 'empty-workflow'}
+                nodes={nodes}
+                transitions={transitions}
+                nodeMeta={nodeMeta}
+                selectedNodeKey={selectedNodeKey}
+                editable={canManage}
+                onNodeSelect={setSelectedNodeKey}
+                onNodePositionsChange={updateNodePositions}
+                onAddNode={addNode}
+              />
             </div>
 
             {validation ? (
               <div
-                className={`border-t px-4 py-3 text-sm ${
-                  validation.valid
+                className={`border-t px-4 py-3 text-sm ${validation.valid
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                     : 'border-red-200 bg-red-50 text-red-700'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 font-bold">
                   {validation.valid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
@@ -1156,11 +1073,11 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
 
             {activeNode ? (
               <div className="grid max-h-[650px] gap-4 overflow-y-auto p-4">
-                <label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
                   Mã node
                   <Input value={activeNode.key} disabled />
-                </label>
-                <label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                </Label>
+                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
                   Tên hiển thị
                   <Input
                     value={activeNode.name}
@@ -1169,8 +1086,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       updateNode(activeNode.key, { name: event.target.value })
                     }
                   />
-                </label>
-                <label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                </Label>
+                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
                   Mô tả
                   <Textarea
                     rows={3}
@@ -1182,19 +1099,18 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       })
                     }
                   />
-                </label>
+                </Label>
 
                 {activeNode.type === 'HUMAN_TASK' ? (
                   <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
                     <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
-                    <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Quy tắc người nhận
-                      <select
-                        className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                      <Select
                         value={activeNode.assignees[0]?.type ?? 'CREATOR'}
                         disabled={!canManage}
-                        onChange={(event) => {
-                          const type = event.target.value as WorkflowAssigneeType;
+                        onValueChange={(value) => {
+                          const type = value as WorkflowAssigneeType;
                           const rule: WorkflowAssignee = {
                             type,
                             strategy: 'ANY',
@@ -1205,67 +1121,81 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                           updateNode(activeNode.key, { assignees: [rule] });
                         }}
                       >
-                        {(Object.keys(assigneeLabels) as WorkflowAssigneeType[]).map(
-                          (type) => (
-                            <option key={type} value={type}>
-                              {assigneeLabels[type]}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </label>
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          {(Object.keys(assigneeLabels) as WorkflowAssigneeType[]).map(
+                            (type) => (
+                              <SelectItem key={type} value={type}>
+                                {assigneeLabels[type]}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </Label>
                     {activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
-                      <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Tên trường trên phiếu
-                        <select
-                          className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                        <Select
                           value={activeNode.assignees[0]?.fieldKey ?? 'assigneeId'}
                           disabled={!canManage}
-                          onChange={(event) =>
+                          onValueChange={(fieldKey) =>
                             updateNode(activeNode.key, {
                               assignees: [
                                 {
                                   ...activeNode.assignees[0],
-                                  fieldKey: event.target.value,
+                                  fieldKey,
                                 },
                               ],
                             })
                           }
                         >
-                          <option value="assigneeId">Người thực hiện mặc định</option>
-                          <option value="technicalReviewerId">Người kiểm tra kỹ thuật</option>
-                          <option value="createdBy">Người tạo phiếu</option>
-                        </select>
-                      </label>
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent position="popper" align="start">
+                            <SelectItem value="assigneeId">Người thực hiện mặc định</SelectItem>
+                            <SelectItem value="technicalReviewerId">Người kiểm tra kỹ thuật</SelectItem>
+                            <SelectItem value="createdBy">Người tạo phiếu</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
                     ) : null}
                     {['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
                       activeNode.assignees[0]?.type ?? '',
                     ) ? (
-                      <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Đối tượng nhận việc
                         {assigneeSubjectOptions.length ? (
-                          <select
-                            className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                            value={activeNode.assignees[0]?.subjectId ?? ''}
+                          <Select
+                            value={activeNode.assignees[0]?.subjectId || '__none__'}
                             disabled={!canManage}
-                            onChange={(event) =>
+                            onValueChange={(subjectId) =>
                               updateNode(activeNode.key, {
                                 assignees: [
                                   {
                                     ...activeNode.assignees[0],
-                                    subjectId: event.target.value,
+                                    subjectId:
+                                      subjectId === '__none__' ? undefined : subjectId,
                                   },
                                 ],
                               })
                             }
                           >
-                            <option value="">Chọn đối tượng</option>
-                            {assigneeSubjectOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger className="w-full bg-white">
+                              <SelectValue placeholder="Chọn đối tượng" />
+                            </SelectTrigger>
+                            <SelectContent position="popper" align="start">
+                              <SelectItem value="__none__">Chọn đối tượng</SelectItem>
+                              {assigneeSubjectOptions.map((option) => (
+                                <SelectItem key={option.id} value={option.id}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         ) : (
                           <Input
                             value={activeNode.assignees[0]?.subjectId ?? ''}
@@ -1283,20 +1213,21 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                             }
                           />
                         )}
-                      </label>
+                      </Label>
                     ) : null}
                     {activeNode.assignees[0]?.type ===
-                    'MANAGER_OF_REQUESTER' ? (
-                      <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      'MANAGER_OF_REQUESTER' ? (
+                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Chức danh quản lý dự phòng
-                        <select
-                          className="h-9 rounded-md border border-input bg-white px-3 text-sm"
-                          value={String(
-                            activeNode.assignees[0]?.config
-                              ?.managerPositionId ?? '',
-                          )}
+                        <Select
+                          value={
+                            String(
+                              activeNode.assignees[0]?.config
+                                ?.managerPositionId ?? '',
+                            ) || '__none__'
+                          }
                           disabled={!canManage}
-                          onChange={(event) =>
+                          onValueChange={(managerPositionId) =>
                             updateNode(activeNode.key, {
                               assignees: [
                                 {
@@ -1304,27 +1235,34 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                                   config: {
                                     ...activeNode.assignees[0]?.config,
                                     managerPositionId:
-                                      event.target.value || undefined,
+                                      managerPositionId === '__none__'
+                                        ? undefined
+                                        : managerPositionId,
                                   },
                                 },
                               ],
                             })
                           }
                         >
-                          <option value="">
-                            Dùng managerUserId trong đơn vị tổ chức
-                          </option>
-                          {organization.positions
-                            .filter((position) => position.isActive)
-                            .map((position) => (
-                              <option key={position.id} value={position.id}>
-                                {position.code} · {position.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent position="popper" align="start">
+                            <SelectItem value="__none__">
+                              Dùng managerUserId trong đơn vị tổ chức
+                            </SelectItem>
+                            {organization.positions
+                              .filter((position) => position.isActive)
+                              .map((position) => (
+                                <SelectItem key={position.id} value={position.id}>
+                                  {position.code} · {position.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </Label>
                     ) : null}
-                    <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       SLA (phút)
                       <Input
                         type="number"
@@ -1340,8 +1278,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                           })
                         }
                       />
-                    </label>
-                    <label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    </Label>
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Quyền bắt buộc (tùy chọn)
                       <Input
                         value={String(
@@ -1359,7 +1297,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                           })
                         }
                       />
-                    </label>
+                    </Label>
                     <div className="grid gap-2 border-t border-[#E7ECE6] pt-3">
                       <div className="flex items-center justify-between">
                         <span>
@@ -1428,37 +1366,39 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                             ) : null}
                           </div>
                           <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                            <select
-                              className="h-8 rounded-md border border-input bg-white px-2 text-xs"
+                            <Select
                               value={field.type}
                               disabled={!canManage}
-                              onChange={(event) =>
+                              onValueChange={(type) =>
                                 updateFormField(index, {
-                                  type: event.target
-                                    .value as WorkflowFormField['type'],
+                                  type: type as WorkflowFormField['type'],
                                 })
                               }
                             >
-                              <option value="text">Văn bản ngắn</option>
-                              <option value="textarea">Văn bản dài</option>
-                              <option value="number">Số</option>
-                              <option value="boolean">Có/không</option>
-                              <option value="date">Ngày</option>
-                              <option value="select">Danh sách chọn</option>
-                            </select>
-                            <label className="flex items-center gap-1.5 text-[10px] font-bold">
-                              <input
-                                type="checkbox"
+                              <SelectTrigger size="sm" className="w-full bg-white text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent position="popper" align="start">
+                                <SelectItem value="text">Văn bản ngắn</SelectItem>
+                                <SelectItem value="textarea">Văn bản dài</SelectItem>
+                                <SelectItem value="number">Số</SelectItem>
+                                <SelectItem value="boolean">Có/không</SelectItem>
+                                <SelectItem value="date">Ngày</SelectItem>
+                                <SelectItem value="select">Danh sách chọn</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Label className="flex items-center gap-1.5 text-[10px] font-bold">
+                              <Checkbox
                                 checked={field.required ?? false}
                                 disabled={!canManage}
-                                onChange={(event) =>
+                                onCheckedChange={(checked) =>
                                   updateFormField(index, {
-                                    required: event.target.checked,
+                                    required: checked === true,
                                   })
                                 }
                               />
                               Bắt buộc
-                            </label>
+                            </Label>
                           </div>
                           {field.type === 'select' ? (
                             <Input
@@ -1523,7 +1463,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         ) : null}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+                        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
                           Action key
                           <Input
                             value={transition.actionKey}
@@ -1535,28 +1475,32 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                               })
                             }
                           />
-                        </label>
-                        <label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+                        </Label>
+                        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
                           Node đích
-                          <select
-                            className="h-8 rounded-md border border-input bg-white px-2 text-xs"
+                          <Select
                             value={transition.targetKey}
                             disabled={!canManage}
-                            onChange={(event) =>
+                            onValueChange={(targetKey) =>
                               updateTransition(transition.actionKey, {
-                                targetKey: event.target.value,
+                                targetKey,
                               })
                             }
                           >
-                            {nodes
-                              .filter((node) => node.key !== activeNode.key)
-                              .map((node) => (
-                                <option key={node.key} value={node.key}>
-                                  {node.name}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
+                            <SelectTrigger size="sm" className="w-full bg-white text-xs">
+                              <SelectValue placeholder="Chọn node đích" />
+                            </SelectTrigger>
+                            <SelectContent position="popper" align="start">
+                              {nodes
+                                .filter((node) => node.key !== activeNode.key)
+                                .map((node) => (
+                                  <SelectItem key={node.key} value={node.key}>
+                                    {node.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </Label>
                       </div>
                       {activeNode.type === 'CONDITION' ? (
                         <ConditionEditor
@@ -1729,7 +1673,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
-            <label className="grid gap-1.5 text-sm font-bold">
+            <Label className="grid gap-1.5 text-sm font-bold">
               Tên quy trình *
               <Input
                 value={createForm.name}
@@ -1743,8 +1687,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   }));
                 }}
               />
-            </label>
-            <label className="grid gap-1.5 text-sm font-bold">
+            </Label>
+            <Label className="grid gap-1.5 text-sm font-bold">
               Mã quy trình *
               <Input
                 value={createForm.key}
@@ -1758,8 +1702,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   }))
                 }
               />
-            </label>
-            <label className="grid gap-1.5 text-sm font-bold">
+            </Label>
+            <Label className="grid gap-1.5 text-sm font-bold">
               Mô tả
               <Textarea
                 value={createForm.description}
@@ -1770,7 +1714,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   }))
                 }
               />
-            </label>
+            </Label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>

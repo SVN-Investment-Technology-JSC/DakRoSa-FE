@@ -199,7 +199,7 @@ export const navigationConfig: readonly NavigationItem[] = [
   {
     id: 'users',
     group: 'administration',
-    label: 'Người dùng doanh nghiệp',
+    label: 'Người dùng',
     description: 'Tài khoản và vai trò được gán',
     href: '/users',
     icon: 'users',
