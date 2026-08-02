@@ -39,6 +39,18 @@ export const PERMISSIONS = {
   MAINTENANCE_CREATE: 'maintenance.create',
   MAINTENANCE_UPDATE: 'maintenance.update',
   MAINTENANCE_DELETE: 'maintenance.delete',
+  WORKFLOW_DEFINITION_VIEW: 'workflow.definition.view',
+  WORKFLOW_DEFINITION_MANAGE: 'workflow.definition.manage',
+  WORKFLOW_DEFINITION_PUBLISH: 'workflow.definition.publish',
+  MAINTENANCE_JOB_PLAN_VIEW: 'maintenance.job-plan.view',
+  MAINTENANCE_JOB_PLAN_MANAGE: 'maintenance.job-plan.manage',
+  MAINTENANCE_JOB_PLAN_PUBLISH: 'maintenance.job-plan.publish',
+  MAINTENANCE_SCHEDULE_VIEW: 'maintenance.schedule.view',
+  MAINTENANCE_SCHEDULE_MANAGE: 'maintenance.schedule.manage',
+  MAINTENANCE_METER_READ: 'maintenance.meter.read',
+  WORK_ORDER_EXECUTE: 'work_order.execute',
+  WORK_ORDER_REVIEW: 'work_order.review',
+  NOTIFICATIONS_VIEW: 'notifications.view',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -99,6 +111,7 @@ export interface NavigationChild {
   label: string;
   href: string;
   tenantAware?: boolean;
+  module?: TenantModuleKey;
 }
 
 export const navigationConfig: readonly NavigationItem[] = [
@@ -186,11 +199,12 @@ export const navigationConfig: readonly NavigationItem[] = [
   {
     id: 'users',
     group: 'administration',
-    label: 'Người dùng doanh nghiệp',
+    label: 'Người dùng',
     description: 'Tài khoản và vai trò được gán',
     href: '/users',
     icon: 'users',
     viewPermission: PERMISSIONS.USERS_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [
       { key: PERMISSIONS.USERS_CREATE, label: 'Tạo mới' },
@@ -207,6 +221,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/roles',
     icon: 'roles',
     viewPermission: PERMISSIONS.ROLES_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [
       { key: PERMISSIONS.ROLES_CREATE, label: 'Tạo vai trò' },
@@ -223,6 +238,7 @@ export const navigationConfig: readonly NavigationItem[] = [
     href: '/audit',
     icon: 'audit',
     viewPermission: PERMISSIONS.AUDIT_VIEW,
+    module: 'administration',
     tenantAware: true,
     actions: [],
   },
@@ -249,13 +265,28 @@ export const navigationConfig: readonly NavigationItem[] = [
       { key: PERMISSIONS.MAINTENANCE_CREATE, label: 'Tạo KH bảo trì' },
       { key: PERMISSIONS.MAINTENANCE_UPDATE, label: 'Cập nhật KH bảo trì' },
       { key: PERMISSIONS.MAINTENANCE_DELETE, label: 'Xóa KH bảo trì' },
+      { key: PERMISSIONS.WORKFLOW_DEFINITION_VIEW, label: 'Xem mẫu quy trình' },
+      { key: PERMISSIONS.WORKFLOW_DEFINITION_MANAGE, label: 'Thiết kế quy trình' },
+      { key: PERMISSIONS.WORKFLOW_DEFINITION_PUBLISH, label: 'Công bố quy trình' },
+      { key: PERMISSIONS.MAINTENANCE_JOB_PLAN_VIEW, label: 'Xem mẫu công việc' },
+      { key: PERMISSIONS.MAINTENANCE_JOB_PLAN_MANAGE, label: 'Quản lý mẫu công việc' },
+      { key: PERMISSIONS.MAINTENANCE_JOB_PLAN_PUBLISH, label: 'Công bố mẫu công việc' },
+      { key: PERMISSIONS.MAINTENANCE_SCHEDULE_VIEW, label: 'Xem lịch bảo trì' },
+      { key: PERMISSIONS.MAINTENANCE_SCHEDULE_MANAGE, label: 'Quản lý lịch bảo trì' },
+      { key: PERMISSIONS.MAINTENANCE_METER_READ, label: 'Ghi chỉ số thiết bị' },
+      { key: PERMISSIONS.WORK_ORDER_EXECUTE, label: 'Thực hiện công việc' },
+      { key: PERMISSIONS.WORK_ORDER_REVIEW, label: 'Kiểm tra kỹ thuật' },
     ],
     children: [
-      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true },
-      { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true },
-      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true },
-      { id: 'maintenance', label: 'Bảo trì định kỳ', href: '/maintenance', tenantAware: true },
-      { id: 'occ', label: 'Liên kết OCC', href: '/occ', tenantAware: true },
+      { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true, module: 'cmms' },
+      { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true, module: 'cmms' },
+      { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance', label: 'Trung tâm bảo trì', href: '/maintenance', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance-calendar', label: 'Lịch bảo trì', href: '/maintenance/calendar', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance-schedules', label: 'Kế hoạch & trigger', href: '/maintenance/schedules', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance-job-plans', label: 'Mẫu công việc', href: '/maintenance/job-plans', tenantAware: true, module: 'cmms' },
+      { id: 'maintenance-workflows', label: 'Mẫu quy trình', href: '/maintenance/workflows', tenantAware: true, module: 'cmms' },
+      { id: 'occ', label: 'Liên kết OCC', href: '/occ', tenantAware: true, module: 'cmms' },
     ],
   },
   {
@@ -267,11 +298,11 @@ export const navigationConfig: readonly NavigationItem[] = [
     viewPermission: PERMISSIONS.EOFFICE_VIEW,
     actions: [],
     children: [
-      { id: 'eoffice-workflow', label: 'Văn bản & quy trình', href: '/eoffice-workflow' },
-      { id: 'hrm', label: 'Nhân sự & chấm công', href: '/hrm' },
-      { id: 'workspace', label: 'Không gian công việc', href: '/workspace' },
-      { id: 'kpi', label: 'KPI', href: '/kpi' },
-      { id: 'projects', label: 'Dự án', href: '/projects' },
+      { id: 'eoffice-workflow', label: 'Văn bản & quy trình', href: '/eoffice-workflow', module: 'e-office' },
+      { id: 'hrm', label: 'Nhân sự & chấm công', href: '/hrm', module: 'hrm' },
+      { id: 'workspace', label: 'Không gian công việc', href: '/workspace', module: 'workspace' },
+      { id: 'kpi', label: 'KPI', href: '/kpi', module: 'kpi' },
+      { id: 'projects', label: 'Dự án', href: '/projects', module: 'project-management' },
     ],
   },
 

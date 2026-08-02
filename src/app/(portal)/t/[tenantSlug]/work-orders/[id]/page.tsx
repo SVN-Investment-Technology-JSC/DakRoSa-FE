@@ -1,585 +1,1221 @@
-/* eslint-disable */
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { Protected } from '@/components/protected';
-import { PERMISSIONS } from '@/lib/navigation';
-import { workOrderApi } from '@/lib/api-work-order';
-import { equipmentApi } from '@/lib/api-equipment';
-import { WorkOrder } from '@/types/work-order';
-import { Equipment } from '@/types/equipment';
-import { useAuth } from '@/providers/auth-provider';
-import { hasPermission } from '@/lib/permissions';
-import { ChevronLeft, Save, AlertCircle, CheckCircle2, Wrench, Clock, FileText, Package, ListTree, Activity, Trash2, Upload, Loader2, FileText as FileTextIcon, Image as ImageIcon, Plus } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock3,
+  FileText,
+  Image as ImageIcon,
+  ListChecks,
+  Loader2,
+  MessageSquareText,
+  Package,
+  Paperclip,
+  Plus,
+  Route,
+  Save,
+  Send,
+  Trash2,
+  Upload,
+  UserRound,
+  Wrench,
+  XCircle,
+} from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { Protected } from '@/components/protected';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { inventoryApi } from '@/lib/api-inventory';
-import { InventoryItem } from '@/types/inventory';
+import { PERMISSIONS } from '@/lib/navigation';
+import { hasPermission } from '@/lib/permissions';
+import { storageApi } from '@/lib/api-storage';
+import { workOrderApi } from '@/lib/api-work-order';
+import { useAuth } from '@/providers/auth-provider';
+import type { InventoryItem, Material, Warehouse } from '@/types/inventory';
+import type {
+  WorkOrder,
+  WorkOrderChecklistResult,
+  WorkOrderStatus,
+  WorkOrderUpdate,
+} from '@/types/work-order';
+import type { WorkflowAvailableAction } from '@/types/workflow';
 
-type Tab = 'info' | 'materials' | 'attachments' | 'logs';
+type Tab = 'execution' | 'materials' | 'documents' | 'history';
+
+interface WorkOrderMaterialRecord {
+  id: string;
+  materialId: string;
+  warehouseId: string;
+  quantity: number;
+  material?: Material;
+  warehouse?: Warehouse;
+}
+
+interface WorkOrderLogRecord {
+  id: string;
+  action: string;
+  note: string | null;
+  createdAt: string;
+  user?: { displayName: string };
+}
+
+const statusLabels: Record<WorkOrderStatus, string> = {
+  DRAFT: 'Mới tạo',
+  ASSIGNED: 'Đã giao',
+  IN_PROGRESS: 'Đang thực hiện',
+  COMPLETED: 'Hoàn thành',
+  CLOSED: 'Đã đóng',
+  CANCELLED: 'Đã hủy',
+};
+
+const updateLabels: Record<WorkOrderUpdate['type'], string> = {
+  PROGRESS: 'Cập nhật tiến độ',
+  BLOCKER: 'Vướng mắc',
+  SUPPORT_REQUEST: 'Yêu cầu hỗ trợ',
+  RESULT: 'Kết quả thực hiện',
+  COMMENT: 'Trao đổi',
+};
+
+const workOrderTabs: Array<{ id: Tab; label: string; icon: typeof ListChecks }> = [
+  { id: 'execution', label: 'Thực hiện', icon: ListChecks },
+  { id: 'materials', label: 'Vật tư', icon: Package },
+  { id: 'documents', label: 'Tài liệu', icon: Paperclip },
+  { id: 'history', label: 'Lịch sử', icon: Route },
+];
+
+const dateTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Asia/Ho_Chi_Minh',
+});
+
+function formatDateTime(value: string | Date) {
+  return dateTimeFormatter.format(new Date(value));
+}
+
+function isImage(url: string) {
+  return /\.(png|jpe?g|gif|webp|bmp)(\?.*)?$/i.test(url);
+}
 
 export default function WorkOrderDetailsPage() {
-  const params = useParams();
-  const router = useRouter();
-  const tenantSlug = params.tenantSlug as string;
-  const id = params.id as string;
+  const params = useParams<{ tenantSlug: string; id: string }>();
   const { user } = useAuth();
-
-  const [wo, setWo] = useState<WorkOrder | null>(null);
-  const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [materials, setMaterials] = useState<any[]>([]);
+  const canUpdate = hasPermission(user, PERMISSIONS.WORK_ORDER_UPDATE);
+  const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [materials, setMaterials] = useState<WorkOrderMaterialRecord[]>([]);
   const [stock, setStock] = useState<InventoryItem[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>('info');
+  const [logs, setLogs] = useState<WorkOrderLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
-
-  // Material Form
-  const [showMaterialForm, setShowMaterialForm] = useState(false);
-  const [matForm, setMatForm] = useState({ inventoryId: '', quantity: 1 });
-
-  const [form, setForm] = useState({
-    status: '',
-    priority: '',
-    downtimeMinutes: 0,
-    rootCause: '',
-    description: '',
+  const [tab, setTab] = useState<Tab>('execution');
+  const [action, setAction] = useState<WorkflowAvailableAction | null>(null);
+  const [actionNote, setActionNote] = useState('');
+  const [actionPayload, setActionPayload] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [updateForm, setUpdateForm] = useState({
+    type: 'PROGRESS' as WorkOrderUpdate['type'],
+    progressPercent: 0,
+    note: '',
   });
+  const [infoForm, setInfoForm] = useState({
+    description: '',
+    rootCause: '',
+    downtimeMinutes: 0,
+  });
+  const [materialForm, setMaterialForm] = useState({
+    inventoryId: '',
+    quantity: 1,
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await workOrderApi.getById(id);
-      setWo(data);
-      setForm({
-        status: data.status,
-        priority: data.priority,
-        downtimeMinutes: data.downtimeMinutes,
-        rootCause: data.rootCause || '',
-        description: data.description || '',
-      });
-      if (data.equipmentId) {
-        const eq = await equipmentApi.getById(data.equipmentId);
-        setEquipment(eq);
+      const [detail, materialResult, stockResult, logResult] =
+        await Promise.allSettled([
+          workOrderApi.getById(params.id),
+          workOrderApi.getMaterials(params.id),
+          inventoryApi.getStock(),
+          workOrderApi.getLogs(params.id),
+        ]);
+      if (detail.status === 'fulfilled') {
+        setWorkOrder(detail.value);
+        setInfoForm({
+          description: detail.value.description ?? '',
+          rootCause: detail.value.rootCause ?? '',
+          downtimeMinutes: detail.value.downtimeMinutes,
+        });
+        setUpdateForm((current) => ({
+          ...current,
+          progressPercent: detail.value.progressPercent,
+        }));
+      } else {
+        toast.error('Không thể tải phiếu công việc.');
       }
-      const [woLogs, woMaterials, stockData] = await Promise.all([
-        workOrderApi.getLogs(id),
-        workOrderApi.getMaterials(id),
-        inventoryApi.getStock(),
-      ]);
-      setLogs(woLogs);
-      setMaterials(woMaterials);
-      setStock(stockData.filter(s => s.quantity > 0)); // Only show available stock
-    } catch {
-      setNotice({ tone: 'error', message: 'Không thể tải thông tin phiếu công việc.' });
+      setMaterials(
+        materialResult.status === 'fulfilled'
+          ? (materialResult.value as WorkOrderMaterialRecord[])
+          : [],
+      );
+      setStock(
+        stockResult.status === 'fulfilled'
+          ? stockResult.value.filter((item) => item.quantity > 0)
+          : [],
+      );
+      setLogs(
+        logResult.status === 'fulfilled'
+          ? (logResult.value as WorkOrderLogRecord[])
+          : [],
+      );
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [params.id]);
 
   useEffect(() => {
-    load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
-  const handleSaveInfo = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const checklistProgress = useMemo(() => {
+    const checklist = workOrder?.checklist ?? [];
+    if (!checklist.length) return 100;
+    const completed = checklist.filter((item) => item.status !== 'pending').length;
+    return Math.round((completed / checklist.length) * 100);
+  }, [workOrder?.checklist]);
+
+  const overdue =
+    workOrder?.dueAt &&
+    new Date(workOrder.dueAt) < new Date() &&
+    !['COMPLETED', 'CLOSED', 'CANCELLED'].includes(workOrder.status);
+  const actionFields = (action?.formFields ?? []).filter(
+    (field) =>
+      !field.actions?.length || (action ? field.actions.includes(action.key) : false),
+  );
+
+  const openAction = (nextAction: WorkflowAvailableAction) => {
+    setAction(nextAction);
+    setActionNote('');
+    setActionPayload(
+      Object.fromEntries(
+        (nextAction.formFields ?? [])
+          .filter(
+            (field) =>
+              !field.actions?.length || field.actions.includes(nextAction.key),
+          )
+          .map((field) => [field.key, field.type === 'boolean' ? false : '']),
+      ),
+    );
+  };
+
+  const saveInfo = async () => {
+    if (!workOrder) return;
     setSaving(true);
-    setNotice(null);
     try {
-      await workOrderApi.update(id, {
-        status: form.status as any,
-        priority: form.priority as any,
-        downtimeMinutes: Number(form.downtimeMinutes),
-        rootCause: form.rootCause,
-        description: form.description,
+      await workOrderApi.update(workOrder.id, {
+        description: infoForm.description,
+        rootCause: infoForm.rootCause,
+        downtimeMinutes: infoForm.downtimeMinutes,
       });
-      setNotice({ tone: 'success', message: 'Cập nhật thành công!' });
-      load();
-    } catch (err: any) {
-      setNotice({ tone: 'error', message: err.message || 'Có lỗi xảy ra.' });
+      await load();
+      toast.success('Đã lưu thông tin phiếu.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể lưu phiếu.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    setNotice(null);
+  const submitUpdate = async () => {
+    if (!workOrder || !updateForm.note.trim()) {
+      toast.error('Vui lòng nhập nội dung cập nhật.');
+      return;
+    }
+    setSaving(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/storage/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData,
+      await workOrderApi.addUpdate(workOrder.id, {
+        type: updateForm.type,
+        progressPercent:
+          updateForm.type === 'PROGRESS' ? updateForm.progressPercent : undefined,
+        note: updateForm.note,
       });
+      setUpdateForm((current) => ({ ...current, note: '' }));
+      await load();
+      toast.success('Đã ghi nhận cập nhật.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật tiến độ.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-      
-      const currentAttachments = wo?.attachments || [];
-      const newAttachments = [...currentAttachments, data.url];
-      
-      await workOrderApi.update(id, { attachments: newAttachments });
-      setNotice({ tone: 'success', message: 'Tải lên tài liệu thành công!' });
-      load();
-    } catch (error: any) {
-      setNotice({ tone: 'error', message: error.message || 'Lỗi tải file' });
+  const updateChecklist = async (
+    item: WorkOrderChecklistResult,
+    status: WorkOrderChecklistResult['status'],
+    value = item.value,
+  ) => {
+    if (!workOrder) return;
+    setSaving(true);
+    try {
+      await workOrderApi.updateChecklist(workOrder.id, {
+        stepId: item.stepId,
+        status,
+        value,
+        note: item.note ?? undefined,
+      });
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật checklist.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const performAction = async () => {
+    if (!workOrder || !action) return;
+    const missingField = actionFields.find((field) => {
+      const value = actionPayload[field.key];
+      return (
+        field.required &&
+        (value === undefined ||
+          value === null ||
+          (typeof value === 'string' && !value.trim()))
+      );
+    });
+    if (missingField) {
+      toast.error(`Vui lòng nhập trường “${missingField.label}”.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await workOrderApi.performAction(workOrder.id, {
+        actionKey: action.key,
+        taskId: action.taskId,
+        note: actionNote || undefined,
+        payload: actionPayload,
+        idempotencyKey: `${workOrder.id}-${action.taskId ?? 'task'}-${action.key}`,
+      });
+      setAction(null);
+      setActionNote('');
+      setActionPayload({});
+      await load();
+      toast.success(`Đã thực hiện: ${action.label}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể chuyển bước.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addMaterial = async () => {
+    if (!workOrder) return;
+    const selectedStock = stock.find((item) => item.id === materialForm.inventoryId);
+    if (!selectedStock || materialForm.quantity <= 0) {
+      toast.error('Vui lòng chọn vật tư và số lượng.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await workOrderApi.addMaterial(workOrder.id, {
+        materialId: selectedStock.materialId,
+        warehouseId: selectedStock.warehouseId,
+        quantity: materialForm.quantity,
+      });
+      setMaterialForm({ inventoryId: '', quantity: 1 });
+      await load();
+      toast.success('Đã xuất vật tư cho phiếu.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể xuất vật tư.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeMaterial = async (item: WorkOrderMaterialRecord) => {
+    if (!workOrder) return;
+    setSaving(true);
+    try {
+      await workOrderApi.removeMaterial(
+        workOrder.id,
+        item.warehouseId,
+        item.materialId,
+      );
+      await load();
+      toast.success('Đã hoàn trả vật tư về kho.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể hoàn trả vật tư.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const uploadAttachment = async (file?: File) => {
+    if (!file || !workOrder) return;
+    setUploading(true);
+    try {
+      const uploaded = await storageApi.uploadFile(file, 'work-orders');
+      await workOrderApi.update(workOrder.id, {
+        attachments: [...(workOrder.attachments ?? []), uploaded.url],
+      });
+      await load();
+      toast.success('Đã tải lên tài liệu.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tải tài liệu.');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
-  const handleDeleteAttachment = async (url: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa tài liệu này?')) return;
-    try {
-      const currentAttachments = wo?.attachments || [];
-      const newAttachments = currentAttachments.filter(a => a !== url);
-      await workOrderApi.update(id, { attachments: newAttachments });
-      setNotice({ tone: 'success', message: 'Đã xóa tài liệu.' });
-      load();
-    } catch (err: any) {
-      setNotice({ tone: 'error', message: err.message || 'Lỗi xóa tài liệu' });
-    }
-  };
-
-  const handleAddMaterial = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!matForm.inventoryId || matForm.quantity <= 0) return;
-    const inv = stock.find(s => s.id === matForm.inventoryId);
-    if (!inv) return;
-
+  const removeAttachment = async (url: string) => {
+    if (!workOrder) return;
     setSaving(true);
-    setNotice(null);
     try {
-      await workOrderApi.addMaterial(id, {
-        materialId: inv.materialId,
-        warehouseId: inv.warehouseId,
-        quantity: matForm.quantity,
+      await workOrderApi.update(workOrder.id, {
+        attachments: (workOrder.attachments ?? []).filter((item) => item !== url),
       });
-      setNotice({ tone: 'success', message: 'Thêm vật tư thành công.' });
-      setShowMaterialForm(false);
-      load();
-    } catch (err: any) {
-      setNotice({ tone: 'error', message: err.message || 'Lỗi thêm vật tư.' });
+      await load();
+      toast.success('Đã gỡ tài liệu khỏi phiếu.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể gỡ tài liệu.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleRemoveMaterial = async (materialId: string, warehouseId: string) => {
-    if (!confirm('Bạn có chắc chắn muốn trả lại vật tư này vào kho?')) return;
-    setSaving(true);
-    try {
-      await workOrderApi.removeMaterial(id, warehouseId, materialId);
-      setNotice({ tone: 'success', message: 'Đã xóa vật tư.' });
-      load();
-    } catch (err: any) {
-      setNotice({ tone: 'error', message: err.message || 'Lỗi xóa vật tư' });
-    } finally {
-      setSaving(false);
-    }
-  };
+  if (loading && !workOrder) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <Loader2 className="animate-spin text-emerald-700" />
+      </div>
+    );
+  }
 
-  const canEdit = hasPermission(user, PERMISSIONS.WORK_ORDER_UPDATE);
-
-  if (loading) return <div className="p-8 text-center text-gray-500">Đang tải...</div>;
-  if (!wo) return <div className="p-8 text-center text-red-500">Phiếu công việc không tồn tại.</div>;
-
-  const isIncident = wo.type === 'INCIDENT';
+  if (!workOrder) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center text-center">
+        <div>
+          <XCircle className="mx-auto text-red-500" />
+          <strong className="mt-3 block">Không tìm thấy phiếu công việc</strong>
+          <Button asChild variant="outline" className="mt-4">
+            <Link href={`/t/${params.tenantSlug}/work-orders`}>Quay lại danh sách</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Protected permission={PERMISSIONS.WORK_ORDER_VIEW}>
-      <div className="flex h-full flex-col">
-        <header className="mb-6">
-          <Link href={`/t/${tenantSlug}/work-orders`} className="inline-flex items-center text-sm text-teal-600 hover:text-teal-700 mb-4 font-medium transition-colors">
-            <ChevronLeft size={16} className="mr-1" /> Quay lại danh sách
-          </Link>
-          
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className={`px-2.5 py-1 text-xs font-semibold rounded-md ${isIncident ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400'}`}>
-                  {isIncident ? 'Sự cố' : 'Bảo trì'}
-                </span>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {wo.code}
-                </h1>
+      <div className="grid gap-5">
+        <Link
+          href={`/t/${params.tenantSlug}/work-orders`}
+          className="inline-flex w-fit items-center gap-2 text-sm font-bold text-[#66736B] hover:text-emerald-700"
+        >
+          <ArrowLeft size={16} />
+          Phiếu công việc
+        </Link>
+
+        <header className="overflow-hidden rounded-3xl border border-[#DCE6DB] bg-white shadow-sm">
+          <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-emerald-100 text-emerald-800">{workOrder.code}</Badge>
+                <Badge variant="outline">
+                  {workOrder.type === 'MAINTENANCE' ? 'Bảo trì' : 'Sự cố'}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className={
+                    workOrder.status === 'COMPLETED' || workOrder.status === 'CLOSED'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : workOrder.status === 'IN_PROGRESS'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-blue-200 bg-blue-50 text-blue-700'
+                  }
+                >
+                  {statusLabels[workOrder.status]}
+                </Badge>
+                {overdue ? (
+                  <Badge className="bg-red-100 text-red-700">
+                    <AlertTriangle />
+                    Quá hạn
+                  </Badge>
+                ) : null}
               </div>
-              <p className="text-lg text-gray-700 dark:text-gray-300 font-medium">{wo.title}</p>
+              <h1 className="mt-3 text-2xl font-black tracking-tight text-[#26352B]">
+                {workOrder.title}
+              </h1>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#66736B]">
+                <span className="flex items-center gap-1.5">
+                  <Wrench size={15} />
+                  {workOrder.equipment
+                    ? `${workOrder.equipment.code} · ${workOrder.equipment.name}`
+                    : 'Không gắn thiết bị'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <UserRound size={15} />
+                  {workOrder.assignee?.displayName ?? 'Chưa phân công'}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CalendarClock size={15} />
+                  {workOrder.dueAt
+                    ? `Hạn ${formatDateTime(workOrder.dueAt)}`
+                    : 'Chưa có hạn'}
+                </span>
+              </div>
             </div>
-            
-            <div className="flex gap-2">
-              <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold uppercase tracking-wider ${
-                wo.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                wo.status === 'IN_PROGRESS' ? 'bg-yellow-100 text-yellow-700' :
-                wo.status === 'DRAFT' ? 'bg-gray-100 text-gray-700' :
-                'bg-blue-100 text-blue-700'
-              }`}>
-                {wo.status}
+            <div className="flex flex-wrap items-start gap-2">
+              {workOrder.workflow?.availableActions.map((item) => (
+                <Button
+                  key={`${item.taskId ?? 'automatic'}-${item.key}`}
+                  variant={item.key.includes('approve') ? 'default' : 'outline'}
+                  onClick={() => openAction(item)}
+                >
+                  {item.key.includes('approve') ? <CheckCircle2 /> : <Send />}
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-2 border-t border-[#E7ECE6] bg-[#F8FAF7] px-5 py-3 sm:grid-cols-2 sm:px-6">
+            <div>
+              <span className="flex items-center justify-between text-[11px] font-bold text-[#68746C]">
+                <span>Tiến độ công việc</span>
+                <span>{workOrder.progressPercent}%</span>
               </span>
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#E2E8E1]">
+                <div
+                  className="h-full rounded-full bg-emerald-600 transition-[width]"
+                  style={{ width: `${workOrder.progressPercent}%` }}
+                />
+              </div>
+            </div>
+            <div>
+              <span className="flex items-center justify-between text-[11px] font-bold text-[#68746C]">
+                <span>Checklist</span>
+                <span>{checklistProgress}%</span>
+              </span>
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#E2E8E1]">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-[width]"
+                  style={{ width: `${checklistProgress}%` }}
+                />
+              </div>
             </div>
           </div>
-        </header>
-
-        {notice && (
-          <div className={`mb-6 flex items-center gap-2 rounded-lg p-4 text-sm ${notice.tone === 'error' ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-600'}`}>
-            {notice.tone === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
-            {notice.message}
-          </div>
-        )}
-
-        {/* Stepper Kanban */}
-        <div className="card p-6 mb-6">
-          <div className="flex items-center justify-between relative">
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full" />
-            
-            {['DRAFT', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].map((step, idx) => {
-              const statusOrder = ['DRAFT', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'];
-              const currentIdx = statusOrder.indexOf(wo.status);
-              const stepIdx = statusOrder.indexOf(step);
-              
-              const isPast = stepIdx <= currentIdx;
-              const isCurrent = stepIdx === currentIdx;
-              
+          <nav className="flex overflow-x-auto border-t border-[#E7ECE6] px-3 sm:px-5">
+            {workOrderTabs.map((item) => {
+              const Icon = item.icon;
               return (
-                <div key={step} className="relative flex flex-col items-center group">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-white dark:border-gray-900 z-10 transition-colors ${
-                    isPast ? 'bg-teal-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                  }`}>
-                    {isPast && !isCurrent ? <CheckCircle2 size={16} /> : <span className="text-xs font-bold">{idx + 1}</span>}
-                  </div>
-                  <span className={`absolute top-10 text-xs font-semibold whitespace-nowrap ${isCurrent ? 'text-teal-600 dark:text-teal-400' : 'text-gray-500'}`}>
-                    {step}
-                  </span>
-                </div>
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={`relative flex min-h-12 shrink-0 items-center gap-2 px-3 text-sm font-bold transition ${
+                    tab === item.id
+                      ? 'text-emerald-700'
+                      : 'text-[#768179] hover:text-[#455249]'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {item.label}
+                  {tab === item.id ? (
+                    <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-emerald-600" />
+                  ) : null}
+                </button>
               );
             })}
-          </div>
-        </div>
+          </nav>
+        </header>
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
-          {[
-            { id: 'info', icon: FileText, label: 'Chi tiết & Cập nhật' },
-            { id: 'materials', icon: Package, label: 'Vật tư sử dụng' },
-            { id: 'attachments', icon: ListTree, label: 'Tài liệu đính kèm' },
-            { id: 'logs', icon: Activity, label: 'Lịch sử thao tác' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as Tab)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'border-teal-500 text-teal-600 dark:text-teal-400 bg-teal-50/50 dark:bg-teal-900/10'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <tab.icon size={16} /> {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 pb-10">
-          {activeTab === 'info' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                <form onSubmit={handleSaveInfo} className="card p-6">
-                  <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Cập nhật trạng thái</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trạng thái hiện tại</label>
-                      <select disabled={!canEdit} className="form-control" value={form.status} onChange={e => setForm({...form, status: e.target.value})}>
-                        <option value="DRAFT">Nháp (DRAFT)</option>
-                        <option value="ASSIGNED">Đã phân công (ASSIGNED)</option>
-                        <option value="IN_PROGRESS">Đang xử lý (IN_PROGRESS)</option>
-                        <option value="COMPLETED">Hoàn thành (COMPLETED)</option>
-                        <option value="CLOSED">Đóng (CLOSED)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Độ ưu tiên</label>
-                      <select disabled={!canEdit} className="form-control" value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}>
-                        <option value="LOW">Thấp (LOW)</option>
-                        <option value="NORMAL">Bình thường (NORMAL)</option>
-                        <option value="HIGH">Cao (HIGH)</option>
-                        <option value="URGENT">Khẩn cấp (URGENT)</option>
-                      </select>
-                    </div>
+        {tab === 'execution' ? (
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+            <section className="grid gap-5">
+              <div className="overflow-hidden rounded-2xl border border-[#DFE7DE] bg-white shadow-sm">
+                <header className="flex items-center justify-between border-b border-[#E7ECE6] px-5 py-4">
+                  <div>
+                    <h2 className="flex items-center gap-2 font-black text-[#2D3A31]">
+                      <ClipboardCheck size={18} className="text-emerald-700" />
+                      Checklist thực hiện
+                    </h2>
+                    <p className="mt-1 text-xs text-[#7A857D]">
+                      Được ghim từ phiên bản mẫu tại thời điểm tạo phiếu
+                    </p>
                   </div>
-
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mô tả công việc</label>
-                    <textarea disabled={!canEdit} className="form-control min-h-[100px]" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Mô tả chi tiết công việc hoặc lỗi..." />
-                  </div>
-
-                  {isIncident && (
-                    <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/50 rounded-xl space-y-4 mb-4">
-                      <h3 className="text-sm font-semibold text-red-800 dark:text-red-400 flex items-center gap-2">
-                        <AlertCircle size={16} /> Ghi nhận sự cố
-                      </h3>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Thời gian dừng máy (phút)</label>
-                        <input disabled={!canEdit} type="number" min="0" className="form-control" value={form.downtimeMinutes} onChange={e => setForm({...form, downtimeMinutes: Number(e.target.value)})} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nguyên nhân (Root Cause)</label>
-                        <textarea disabled={!canEdit} className="form-control min-h-[80px]" value={form.rootCause} onChange={e => setForm({...form, rootCause: e.target.value})} placeholder="Nguyên nhân gây ra sự cố..." />
-                      </div>
-                    </div>
-                  )}
-
-                  {canEdit && (
-                    <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-800">
-                      <button type="submit" disabled={saving} className="button button-primary min-w-[120px]">
-                        {saving ? 'Đang lưu...' : <><Save size={16} className="mr-2" /> Lưu thay đổi</>}
-                      </button>
-                    </div>
-                  )}
-                </form>
-              </div>
-
-              <div className="space-y-6">
-                <div className="card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2">
-                    <Wrench size={16} className="text-teal-500" /> Thiết bị liên quan
-                  </h3>
-                  {equipment ? (
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-xs text-gray-500">Mã thiết bị</div>
-                        <div className="font-medium text-teal-600">{equipment.code}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">Tên thiết bị</div>
-                        <div className="font-medium">{equipment.name}</div>
-                      </div>
-                      <Link href={`/t/${tenantSlug}/equipment/${equipment.id}`} className="text-sm text-blue-600 hover:underline mt-2 inline-block">
-                        Xem hồ sơ thiết bị &rarr;
-                      </Link>
-                    </div>
+                  <Badge variant="outline">
+                    {(workOrder.checklist ?? []).filter((item) => item.status !== 'pending').length}/
+                    {workOrder.checklist?.length ?? 0}
+                  </Badge>
+                </header>
+                <div className="divide-y divide-[#EBF0EA]">
+                  {workOrder.checklist?.length ? (
+                    workOrder.checklist.map((item, index) => (
+                      <ChecklistItem
+                        key={item.id}
+                        item={item}
+                        index={index}
+                        disabled={!canUpdate || saving}
+                        onUpdate={updateChecklist}
+                      />
+                    ))
                   ) : (
-                    <div className="text-sm text-gray-500 italic">Phiếu không gắn với thiết bị cụ thể.</div>
+                    <div className="p-10 text-center text-sm text-[#7A857D]">
+                      Phiếu này không có checklist mẫu.
+                    </div>
                   )}
                 </div>
+              </div>
 
-                <div className="card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2">
-                    <Clock size={16} className="text-gray-500" /> Thời gian
-                  </h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-gray-500">Ngày tạo</span>
-                      <span className="font-medium">{new Date(wo.createdAt).toLocaleString('vi-VN')}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-gray-500">Bắt đầu xử lý</span>
-                      <span className="font-medium">{wo.startTime ? new Date(wo.startTime).toLocaleString('vi-VN') : '—'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-gray-500">Hoàn thành</span>
-                      <span className="font-medium">{wo.endTime ? new Date(wo.endTime).toLocaleString('vi-VN') : '—'}</span>
-                    </div>
+              <div className="rounded-2xl border border-[#DFE7DE] bg-white p-5 shadow-sm">
+                <h2 className="flex items-center gap-2 font-black text-[#2D3A31]">
+                  <FileText size={18} className="text-emerald-700" />
+                  Thông tin kỹ thuật
+                </h2>
+                <div className="mt-4 grid gap-4">
+                  <label className="grid gap-1.5 text-sm font-bold">
+                    Mô tả / phạm vi công việc
+                    <Textarea
+                      rows={4}
+                      value={infoForm.description}
+                      disabled={!canUpdate}
+                      onChange={(event) =>
+                        setInfoForm((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+                    <label className="grid gap-1.5 text-sm font-bold">
+                      Nguyên nhân gốc
+                      <Input
+                        value={infoForm.rootCause}
+                        disabled={!canUpdate}
+                        onChange={(event) =>
+                          setInfoForm((current) => ({
+                            ...current,
+                            rootCause: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-bold">
+                      Dừng máy (phút)
+                      <Input
+                        type="number"
+                        min={0}
+                        value={infoForm.downtimeMinutes}
+                        disabled={!canUpdate}
+                        onChange={(event) =>
+                          setInfoForm((current) => ({
+                            ...current,
+                            downtimeMinutes: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
                   </div>
+                  {canUpdate ? (
+                    <Button
+                      className="justify-self-end"
+                      variant="outline"
+                      onClick={() => void saveInfo()}
+                      disabled={saving}
+                    >
+                      <Save />
+                      Lưu thông tin
+                    </Button>
+                  ) : null}
                 </div>
               </div>
-            </div>
-          )}
+            </section>
 
-          {activeTab === 'materials' && (
-            <div className="card p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-                  Vật tư & Phụ tùng sử dụng
-                </h3>
-                {canEdit && !showMaterialForm && (
-                  <button onClick={() => setShowMaterialForm(true)} className="button button-primary text-xs py-1.5">
-                    <Plus size={14} className="mr-1" /> Thêm vật tư
-                  </button>
-                )}
-              </div>
-
-              {showMaterialForm && (
-                <form onSubmit={handleAddMaterial} className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg mb-6 border border-gray-200 dark:border-gray-700">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chọn vật tư trong kho</label>
+            <aside className="grid content-start gap-5">
+              {canUpdate ? (
+                <div className="rounded-2xl border border-[#DFE7DE] bg-white p-5 shadow-sm">
+                  <h2 className="flex items-center gap-2 font-black text-[#2D3A31]">
+                    <MessageSquareText size={18} className="text-emerald-700" />
+                    Ghi nhận cập nhật
+                  </h2>
+                  <div className="mt-4 grid gap-3">
+                    <div className="grid grid-cols-[1fr_105px] gap-2">
                       <select
-                        required
-                        value={matForm.inventoryId}
-                        onChange={e => setMatForm({ ...matForm, inventoryId: e.target.value })}
-                        className="input"
+                        aria-label="Loại cập nhật tiến độ"
+                        className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                        value={updateForm.type}
+                        onChange={(event) =>
+                          setUpdateForm((current) => ({
+                            ...current,
+                            type: event.target.value as WorkOrderUpdate['type'],
+                          }))
+                        }
                       >
-                        <option value="">-- Chọn --</option>
-                        {stock.map(s => (
-                          <option key={s.id} value={s.id}>
-                            {s.material?.name} ({s.material?.code}) - Kho: {s.warehouse?.name} (Tồn: {s.quantity})
+                        {Object.entries(updateLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
                           </option>
                         ))}
                       </select>
+                      {updateForm.type === 'PROGRESS' ? (
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={updateForm.progressPercent}
+                          onChange={(event) =>
+                            setUpdateForm((current) => ({
+                              ...current,
+                              progressPercent: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      ) : (
+                        <span />
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Số lượng xuất</label>
-                      <input
-                        type="number"
-                        min="1"
-                        required
-                        value={matForm.quantity}
-                        onChange={e => setMatForm({ ...matForm, quantity: parseInt(e.target.value) })}
-                        className="input"
-                      />
+                    <Textarea
+                      rows={4}
+                      value={updateForm.note}
+                      placeholder="Tiến độ, kết quả, vướng mắc hoặc yêu cầu hỗ trợ…"
+                      onChange={(event) =>
+                        setUpdateForm((current) => ({
+                          ...current,
+                          note: event.target.value,
+                        }))
+                      }
+                    />
+                    <Button onClick={() => void submitUpdate()} disabled={saving}>
+                      <Send />
+                      Gửi cập nhật
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="overflow-hidden rounded-2xl border border-[#DFE7DE] bg-white shadow-sm">
+                <header className="border-b border-[#E7ECE6] px-5 py-4">
+                  <h2 className="font-black text-[#2D3A31]">Nhật ký tiến độ</h2>
+                </header>
+                <div className="max-h-[520px] divide-y divide-[#EDF1EC] overflow-y-auto">
+                  {workOrder.updates?.length ? (
+                    workOrder.updates.map((update) => (
+                      <div key={update.id} className="p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge variant="outline">{updateLabels[update.type]}</Badge>
+                          <span className="text-[11px] text-[#7F8A82]">
+                            {formatDateTime(update.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[#49564E]">{update.note}</p>
+                        <span className="mt-2 block text-xs font-bold text-[#768179]">
+                          {update.actor?.displayName ?? 'Người dùng'}{' '}
+                          {update.progressPercent !== null
+                            ? `· ${update.progressPercent}%`
+                            : ''}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-sm text-[#7A857D]">
+                      Chưa có cập nhật.
                     </div>
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <button type="submit" disabled={saving} className="button button-primary text-xs py-1.5">
-                      Xác nhận thêm
-                    </button>
-                    <button type="button" onClick={() => setShowMaterialForm(false)} className="button button-secondary text-xs py-1.5">
-                      Hủy
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {materials.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800/50 border-y border-gray-200 dark:border-gray-700">
-                      <tr>
-                        <th className="px-4 py-3">Mã vật tư</th>
-                        <th className="px-4 py-3">Tên vật tư</th>
-                        <th className="px-4 py-3">Kho xuất</th>
-                        <th className="px-4 py-3">Số lượng</th>
-                        {canEdit && <th className="px-4 py-3 text-right">Thao tác</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {materials.map((m: any) => (
-                        <tr key={`${m.materialId}-${m.warehouseId}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{m.material?.code}</td>
-                          <td className="px-4 py-3">{m.material?.name}</td>
-                          <td className="px-4 py-3">{m.warehouse?.name || '---'}</td>
-                          <td className="px-4 py-3 font-semibold text-teal-600">{m.quantity} {m.material?.unit}</td>
-                          {canEdit && (
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => handleRemoveMaterial(m.materialId, m.warehouseId)}
-                                className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                                title="Trả lại kho"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  )}
                 </div>
-              ) : (
-                <div className="text-sm text-gray-500 italic text-center py-12">
-                  Chưa có vật tư nào được xuất cho phiếu này.
-                </div>
-              )}
-            </div>
-          )}
+              </div>
+            </aside>
+          </div>
+        ) : null}
 
-          {activeTab === 'attachments' && (
-            <div className="card p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-                  Tài liệu & Hình ảnh
-                </h3>
-                {canEdit && (
-                  <div>
-                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="button button-secondary text-xs">
-                      {uploading ? <Loader2 size={14} className="animate-spin mr-1" /> : <Upload size={14} className="mr-1" />}
-                      {uploading ? 'Đang tải lên...' : 'Tải lên tài liệu'}
-                    </button>
+        {tab === 'materials' ? (
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="overflow-hidden rounded-2xl border border-[#DFE7DE] bg-white shadow-sm">
+              <header className="border-b border-[#E7ECE6] px-5 py-4">
+                <h2 className="font-black text-[#2D3A31]">Vật tư đã sử dụng</h2>
+              </header>
+              <div className="divide-y divide-[#EDF1EC]">
+                {materials.length ? (
+                  materials.map((item) => (
+                    <div key={item.id} className="flex items-center gap-4 p-4">
+                      <span className="grid size-10 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                        <Package size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-sm text-[#354139]">
+                          {item.material?.name ?? item.materialId}
+                        </strong>
+                        <span className="text-xs text-[#7B857E]">
+                          {item.material?.code} · {item.warehouse?.name ?? 'Kho'}
+                        </span>
+                      </span>
+                      <strong className="text-sm text-[#334039]">
+                        {item.quantity} {item.material?.unit}
+                      </strong>
+                      {canUpdate ? (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="text-red-600"
+                          aria-label="Hoàn trả vật tư"
+                          onClick={() => void removeMaterial(item)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-12 text-center text-sm text-[#7A857D]">
+                    Chưa ghi nhận vật tư.
                   </div>
                 )}
               </div>
-              
-              {(wo.attachments && wo.attachments.length > 0) ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {wo.attachments.map((url, idx) => {
-                    const filename = url.split('/').pop() || `File ${idx + 1}`;
-                    const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null;
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div className={`p-2 rounded-md ${isImage ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
-                            {isImage ? <ImageIcon size={20} /> : <FileTextIcon size={20} />}
-                          </div>
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-gray-900 dark:text-white hover:underline truncate">
-                            {filename}
-                          </a>
-                        </div>
-                        {canEdit && (
-                          <button onClick={() => handleDeleteAttachment(url)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md">
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 italic text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-                  Chưa có tài liệu đính kèm.
-                </div>
-              )}
             </div>
-          )}
+            {canUpdate ? (
+              <aside className="rounded-2xl border border-[#DFE7DE] bg-white p-5 shadow-sm">
+                <h2 className="font-black text-[#2D3A31]">Xuất vật tư</h2>
+                <div className="mt-4 grid gap-3">
+                  <label className="grid gap-1.5 text-sm font-bold">
+                    Tồn kho khả dụng
+                    <select
+                      aria-label="Chọn vật tư tồn kho"
+                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                      value={materialForm.inventoryId}
+                      onChange={(event) =>
+                        setMaterialForm((current) => ({
+                          ...current,
+                          inventoryId: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Chọn vật tư</option>
+                      {stock.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.material?.code} · {item.material?.name} ({item.quantity}{' '}
+                          {item.material?.unit})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-bold">
+                    Số lượng
+                    <Input
+                      type="number"
+                      min={1}
+                      value={materialForm.quantity}
+                      onChange={(event) =>
+                        setMaterialForm((current) => ({
+                          ...current,
+                          quantity: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <Button onClick={() => void addMaterial()} disabled={saving}>
+                    <Plus />
+                    Xuất cho phiếu
+                  </Button>
+                </div>
+              </aside>
+            ) : null}
+          </section>
+        ) : null}
 
-          {activeTab === 'logs' && (
-            <div className="card p-6">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-6 flex items-center gap-2">
-                <Activity size={16} /> Lịch sử thao tác
-              </h3>
-              
-              {logs.length > 0 ? (
-                <div className="relative border-l-2 border-gray-100 dark:border-gray-800 ml-3 space-y-6 pb-4">
-                  {logs.map((log: any) => (
-                    <div key={log.id} className="relative pl-6">
-                      <span className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-white dark:bg-gray-900 border-2 border-teal-500" />
-                      <div className="text-xs text-gray-500 mb-1">
-                        {new Date(log.createdAt).toLocaleString('vi-VN')}
-                      </div>
-                      <div className="font-medium text-sm text-gray-900 dark:text-white">
-                        {log.action}
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        {log.note}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Bởi: {log.user?.fullName || 'Hệ thống'}
-                      </div>
+        {tab === 'documents' ? (
+          <section className="rounded-2xl border border-[#DFE7DE] bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-[#2D3A31]">Tài liệu & hình ảnh</h2>
+                <p className="mt-1 text-xs text-[#7A857D]">
+                  Biên bản, ảnh hiện trường và tài liệu kỹ thuật của phiếu
+                </p>
+              </div>
+              {canUpdate ? (
+                <>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => void uploadAttachment(event.target.files?.[0])}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+                    Tải lên
+                  </Button>
+                </>
+              ) : null}
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {workOrder.attachments?.length ? (
+                workOrder.attachments.map((url) => (
+                  <div
+                    key={url}
+                    className="group relative overflow-hidden rounded-2xl border border-[#DFE7DE] bg-[#F8FAF7]"
+                  >
+                    <a href={url} target="_blank" rel="noreferrer">
+                      {isImage(url) ? (
+                        <Image
+                          src={url}
+                          alt="Minh chứng công việc"
+                          width={480}
+                          height={320}
+                          unoptimized
+                          className="h-40 w-full object-cover"
+                        />
+                      ) : (
+                        <span className="grid h-40 place-items-center text-[#718078]">
+                          <FileText size={32} />
+                        </span>
+                      )}
+                    </a>
+                    <div className="flex items-center gap-2 border-t border-[#E2E8E1] bg-white p-3">
+                      {isImage(url) ? <ImageIcon size={15} /> : <Paperclip size={15} />}
+                      <span className="min-w-0 flex-1 truncate text-xs font-bold">
+                        {decodeURIComponent(url.split('/').pop() ?? 'Tài liệu')}
+                      </span>
+                      {canUpdate ? (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          className="text-red-600"
+                          aria-label="Gỡ tài liệu"
+                          onClick={() => void removeAttachment(url)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))
               ) : (
-                <div className="text-sm text-gray-500 italic text-center py-12">
-                  Chưa có lịch sử thao tác.
+                <div className="col-span-full grid place-items-center py-14 text-center">
+                  <Paperclip className="text-[#9BA69D]" />
+                  <strong className="mt-3 text-sm text-[#435047]">Chưa có tài liệu</strong>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </section>
+        ) : null}
+
+        {tab === 'history' ? (
+          <section className="grid gap-5 lg:grid-cols-2">
+            <TimelineCard
+              title="Lịch sử quy trình"
+              icon={Route}
+              items={(workOrder.workflow?.actions ?? []).map((item) => ({
+                id: item.id,
+                title: item.actionKey,
+                description: `${item.fromNode?.name ?? 'Bắt đầu'} → ${
+                  item.toNode?.name ?? 'Hoàn tất'
+                }${item.note ? ` · ${item.note}` : ''}`,
+                actor: item.actor?.displayName ?? 'Hệ thống',
+                time: item.createdAt,
+              }))}
+            />
+            <TimelineCard
+              title="Nhật ký phiếu"
+              icon={Clock3}
+              items={logs.map((item) => ({
+                id: item.id,
+                title: item.action,
+                description: item.note ?? '',
+                actor: item.user?.displayName ?? 'Hệ thống',
+                time: item.createdAt,
+              }))}
+            />
+          </section>
+        ) : null}
       </div>
+
+      <Dialog open={Boolean(action)} onOpenChange={(open) => !open && setAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{action?.label ?? 'Thực hiện hành động'}</DialogTitle>
+            <DialogDescription>
+              Hành động này sẽ chuyển phiếu sang bước tiếp theo của quy trình.
+            </DialogDescription>
+          </DialogHeader>
+          {actionFields.length ? (
+            <div className="grid gap-3 rounded-2xl border border-[#DFE7DE] bg-[#F8FAF7] p-4">
+              {actionFields.map((field) => (
+                <label
+                  key={field.key}
+                  className="grid gap-1.5 text-sm font-bold"
+                >
+                  <span>
+                    {field.label}
+                    {field.required ? (
+                      <span className="ml-1 text-red-600">*</span>
+                    ) : null}
+                  </span>
+                  {field.type === 'textarea' ? (
+                    <Textarea
+                      rows={3}
+                      value={String(actionPayload[field.key] ?? '')}
+                      onChange={(event) =>
+                        setActionPayload((current) => ({
+                          ...current,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                    />
+                  ) : field.type === 'select' ? (
+                    <select
+                      className="h-10 rounded-md border border-input bg-white px-3 text-sm"
+                      value={String(actionPayload[field.key] ?? '')}
+                      onChange={(event) =>
+                        setActionPayload((current) => ({
+                          ...current,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Chọn giá trị</option>
+                      {(field.options ?? []).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.type === 'boolean' ? (
+                    <span className="flex items-center gap-2 rounded-xl border border-[#DCE5DA] bg-white px-3 py-2 font-normal">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(actionPayload[field.key])}
+                        onChange={(event) =>
+                          setActionPayload((current) => ({
+                            ...current,
+                            [field.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      Xác nhận
+                    </span>
+                  ) : (
+                    <Input
+                      type={
+                        field.type === 'number'
+                          ? 'number'
+                          : field.type === 'date'
+                            ? 'date'
+                            : 'text'
+                      }
+                      value={String(actionPayload[field.key] ?? '')}
+                      onChange={(event) =>
+                        setActionPayload((current) => ({
+                          ...current,
+                          [field.key]:
+                            field.type === 'number'
+                              ? event.target.value === ''
+                                ? ''
+                                : Number(event.target.value)
+                              : event.target.value,
+                        }))
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+          ) : null}
+          <label className="grid gap-1.5 text-sm font-bold">
+            Ghi chú
+            <Textarea
+              rows={4}
+              value={actionNote}
+              placeholder="Kết quả xử lý hoặc lý do chuyển bước…"
+              onChange={(event) => setActionNote(event.target.value)}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAction(null);
+                setActionPayload({});
+              }}
+            >
+              Hủy
+            </Button>
+            <Button onClick={() => void performAction()} disabled={saving}>
+              <Send />
+              Xác nhận
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Protected>
+  );
+}
+
+function ChecklistItem({
+  item,
+  index,
+  disabled,
+  onUpdate,
+}: {
+  item: WorkOrderChecklistResult;
+  index: number;
+  disabled: boolean;
+  onUpdate: (
+    item: WorkOrderChecklistResult,
+    status: WorkOrderChecklistResult['status'],
+    value?: Record<string, unknown>,
+  ) => Promise<void>;
+}) {
+  const [measurement, setMeasurement] = useState(
+    String(item.value.measurement ?? ''),
+  );
+  const passed = item.status === 'passed';
+  const failed = item.status === 'failed';
+  return (
+    <div className="grid gap-3 p-4 sm:grid-cols-[34px_minmax(0,1fr)_auto] sm:items-start">
+      <span
+        className={`grid size-8 place-items-center rounded-full text-xs font-black ${
+          passed
+            ? 'bg-emerald-100 text-emerald-700'
+            : failed
+              ? 'bg-red-100 text-red-700'
+              : 'bg-[#EEF2ED] text-[#657169]'
+        }`}
+      >
+        {passed ? <Check size={15} /> : failed ? <XCircle size={15} /> : index + 1}
+      </span>
+      <div className="min-w-0">
+        <span className="flex flex-wrap items-center gap-2">
+          <strong className="text-sm text-[#354139]">{item.step.title}</strong>
+          {item.step.isRequired ? <Badge variant="outline">Bắt buộc</Badge> : null}
+          <Badge variant="secondary">{item.step.type}</Badge>
+        </span>
+        {item.step.description ? (
+          <p className="mt-1 text-xs leading-5 text-[#748078]">{item.step.description}</p>
+        ) : null}
+        {item.step.type === 'MEASUREMENT' ? (
+          <div className="mt-3 flex max-w-sm items-center gap-2">
+            <Input
+              type="number"
+              value={measurement}
+              disabled={disabled}
+              placeholder="Giá trị đo"
+              onChange={(event) => setMeasurement(event.target.value)}
+            />
+            <span className="text-xs font-bold text-[#6E7A72]">
+              {String(item.step.config.unit ?? '')}
+            </span>
+          </div>
+        ) : null}
+        {item.completedAt ? (
+          <span className="mt-2 block text-[11px] text-[#849087]">
+            {item.completer?.displayName ?? 'Người dùng'} ·{' '}
+            {formatDateTime(item.completedAt)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant={passed ? 'default' : 'outline'}
+          disabled={disabled}
+          onClick={() =>
+            void onUpdate(item, 'passed', {
+              ...item.value,
+              ...(item.step.type === 'MEASUREMENT'
+                ? { measurement: Number(measurement) }
+                : {}),
+            })
+          }
+        >
+          <CheckCircle2 />
+          Đạt
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className={failed ? 'border-red-300 bg-red-50 text-red-700' : ''}
+          disabled={disabled}
+          onClick={() => void onUpdate(item, 'failed')}
+        >
+          <AlertTriangle />
+          Không đạt
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TimelineCard({
+  title,
+  icon: Icon,
+  items,
+}: {
+  title: string;
+  icon: typeof Route;
+  items: Array<{
+    id: string;
+    title: string;
+    description: string;
+    actor: string;
+    time: string;
+  }>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#DFE7DE] bg-white shadow-sm">
+      <header className="flex items-center gap-2 border-b border-[#E7ECE6] px-5 py-4">
+        <Icon size={18} className="text-emerald-700" />
+        <h2 className="font-black text-[#2D3A31]">{title}</h2>
+      </header>
+      <div className="divide-y divide-[#EDF1EC]">
+        {items.length ? (
+          items.map((item) => (
+            <div key={item.id} className="flex gap-3 p-4">
+              <span className="mt-1 size-2 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+              <span className="min-w-0">
+                <strong className="block text-sm text-[#354139]">{item.title}</strong>
+                {item.description ? (
+                  <span className="mt-1 block text-xs leading-5 text-[#748078]">
+                    {item.description}
+                  </span>
+                ) : null}
+                <span className="mt-1.5 block text-[11px] text-[#849087]">
+                  {item.actor} · {formatDateTime(item.time)}
+                </span>
+              </span>
+            </div>
+          ))
+        ) : (
+          <div className="p-10 text-center text-sm text-[#7A857D]">Chưa có lịch sử.</div>
+        )}
+      </div>
+    </div>
   );
 }
