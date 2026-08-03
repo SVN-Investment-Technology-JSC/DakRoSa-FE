@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
@@ -12,10 +11,10 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useNodesState,
   type Edge,
   type MiniMapNodeProps,
   type Node,
-  type NodeChange,
   type NodeProps,
   type XYPosition,
 } from '@xyflow/react';
@@ -23,6 +22,7 @@ import { Route, type LucideIcon } from 'lucide-react';
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type DragEvent,
@@ -35,6 +35,8 @@ import type {
 
 const workflowNodeWidth = 188;
 const workflowNodeHeight = 82;
+const workflowFitViewOptions = { padding: 0.2, maxZoom: 1 };
+const workflowSnapGrid: [number, number] = [20, 20];
 
 export const WORKFLOW_NODE_DRAG_TYPE =
   'application/x-dakrosa-workflow-node';
@@ -204,47 +206,65 @@ function WorkflowFlowCanvasInner({
   onAddNode,
 }: WorkflowFlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow<WorkflowFlowNode, Edge>();
-  const [interactionNodes, setInteractionNodes] = useState<WorkflowFlowNode[]>(() =>
+  const [flowNodes, setFlowNodes, handleNodesChange] = useNodesState<WorkflowFlowNode>(
     nodes.map((node) =>
       createFlowNode(node, nodeMeta, selectedNodeKey, editable),
     ),
   );
   const [dropActive, setDropActive] = useState(false);
 
-  const flowNodes = useMemo<WorkflowFlowNode[]>(() => {
-    const interactionById = new Map(
-      interactionNodes.map((node) => [node.id, node]),
-    );
-    return nodes.map((workflowNode) => {
-      const existing = interactionById.get(workflowNode.key);
-      const projected = createFlowNode(
-        workflowNode,
-        nodeMeta,
-        selectedNodeKey,
-        editable,
+  useEffect(() => {
+    setFlowNodes((currentNodes) => {
+      const currentById = new Map(
+        currentNodes.map((node) => [node.id, node]),
       );
+      let changed = currentNodes.length !== nodes.length;
+      const nextNodes = nodes.map((workflowNode) => {
+        const existing = currentById.get(workflowNode.key);
+        const projected = createFlowNode(
+          workflowNode,
+          nodeMeta,
+          selectedNodeKey,
+          editable,
+        );
 
-      if (
-        existing &&
-        existing.data.workflowNode === workflowNode &&
-        existing.selected === projected.selected &&
-        existing.draggable === projected.draggable
-      ) {
-        return existing;
-      }
+        if (!existing) {
+          changed = true;
+          return projected;
+        }
 
-      return existing
-        ? {
-            ...existing,
-            ...projected,
-            position:
-              existing.data.workflowNode === workflowNode
-                ? existing.position
-                : projected.position,
-          }
-        : projected;
+        const previousPosition = existing.data.workflowNode.uiPosition;
+        const externalPositionChanged =
+          Number(previousPosition.x ?? 0) !==
+            Number(workflowNode.uiPosition.x ?? 0) ||
+          Number(previousPosition.y ?? 0) !==
+            Number(workflowNode.uiPosition.y ?? 0);
+        const position = externalPositionChanged
+          ? projected.position
+          : existing.position;
+
+        if (
+          existing.data.workflowNode === workflowNode &&
+          existing.data.presentation === projected.data.presentation &&
+          existing.selected === projected.selected &&
+          existing.draggable === projected.draggable &&
+          existing.position.x === position.x &&
+          existing.position.y === position.y
+        ) {
+          return existing;
+        }
+
+        changed = true;
+        return {
+          ...existing,
+          ...projected,
+          position,
+        };
+      });
+
+      return changed ? nextNodes : currentNodes;
     });
-  }, [editable, interactionNodes, nodeMeta, nodes, selectedNodeKey]);
+  }, [editable, nodeMeta, nodes, selectedNodeKey, setFlowNodes]);
 
   const nodeKeys = useMemo(() => new Set(nodes.map((node) => node.key)), [nodes]);
   const flowEdges = useMemo<Edge[]>(
@@ -283,13 +303,6 @@ function WorkflowFlowCanvasInner({
           labelBgBorderRadius: 6,
         })),
     [nodeKeys, transitions],
-  );
-
-  const handleNodesChange = useCallback(
-    (changes: NodeChange<WorkflowFlowNode>[]) => {
-      setInteractionNodes(() => applyNodeChanges(changes, flowNodes));
-    },
-    [flowNodes],
   );
 
   const handleNodeDragStop = useCallback(
@@ -366,9 +379,9 @@ function WorkflowFlowCanvasInner({
         minZoom={0.35}
         maxZoom={1.75}
         fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        fitViewOptions={workflowFitViewOptions}
         snapToGrid
-        snapGrid={[20, 20]}
+        snapGrid={workflowSnapGrid}
         panOnScroll
         zoomOnScroll={false}
         zoomOnDoubleClick={false}
