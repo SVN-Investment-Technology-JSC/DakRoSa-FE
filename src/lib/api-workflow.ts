@@ -4,6 +4,7 @@ import type {
   WorkflowDraftInput,
   WorkflowInstance,
   WorkflowValidation,
+  CMMSWorkflowTemplate,
 } from '@/types/workflow';
 
 export const workflowApi = {
@@ -58,3 +59,25 @@ export const workflowApi = {
     apiRequest<WorkflowInstance>(`/workflow/instances/${id}`),
   getMyWorkItems: () => apiRequest('/workflow/work-items/mine'),
 };
+
+export async function listWorkflowTemplates(): Promise<CMMSWorkflowTemplate[]> {
+  const res = await apiRequest<{ data: CMMSWorkflowTemplate[] }>('/workflow/templates');
+  return res.data;
+}
+
+export async function getWorkflowPreview(templateId: string): Promise<CMMSWorkflowTemplate> {
+  const res = await apiRequest<{ data: CMMSWorkflowTemplate }>(
+    `/workflow/templates/${templateId}/preview`,
+  );
+  return res.data;
+}
+
+export async function executeWorkflowStep(params: {
+  workOrderId: string;
+  stepKey: string;
+  action: 'APPROVED' | 'REJECTED';
+  note?: string;
+  formData?: Record<string, unknown>;
+}): Promise<void> {
+  await apiRequest('/workflow/execute', { method: 'POST', body: JSON.stringify(params) });
+}

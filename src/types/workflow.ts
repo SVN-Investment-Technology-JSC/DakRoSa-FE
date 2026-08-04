@@ -20,10 +20,11 @@ export type WorkflowAssigneeType =
 export interface WorkflowFormField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'select';
+  type: 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'select' | 'checkbox' | 'file';
   required?: boolean;
   options?: string[];
   actions?: string[];
+  accept?: string;
 }
 
 export interface WorkflowAssignee {
@@ -138,4 +139,77 @@ export interface WorkflowInstance {
     fromNode?: WorkflowNode | null;
     toNode?: WorkflowNode | null;
   }>;
+}
+
+// =========================================================================
+// Types cho CMMS Workflow Engine (Mini-map & Execution)
+// =========================================================================
+
+export interface CMMSWorkflowFormSchema {
+  fields: WorkflowFormField[];
+}
+
+export interface CMMSWorkflowTransition {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  condition: 'APPROVED' | 'REJECTED' | 'DEFAULT';
+  label: string | null;
+}
+
+export interface CMMSWorkflowNode {
+  id: string;
+  templateId: string;
+  stepKey: string;
+  name: string;
+  type: 'start' | 'task' | 'approval' | 'condition' | 'end';
+  assigneeType:
+    | 'USER'
+    | 'ROLE'
+    | 'POSITION'
+    | 'MANAGER_OF_REQUESTER'
+    | 'PREVIOUS_STEP_ACTOR'
+    | null;
+  assigneeValue: string | null;
+  assignmentStrategy: 'ANY' | 'ALL';
+  slaMinutes: number | null;
+  formSchema: CMMSWorkflowFormSchema | null;
+  requiredPermissions: string[];
+  positionX: number;
+  positionY: number;
+  outgoingTransitions: CMMSWorkflowTransition[];
+}
+
+export interface CMMSWorkflowTemplate {
+  id: string;
+  tenantId: string;
+  key: string;
+  version: number;
+  name: string;
+  description: string | null;
+  status: 'draft' | 'active' | 'archived';
+  startNodeId: string | null;
+  nodes: CMMSWorkflowNode[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Notification types
+export interface AppNotification {
+  id: string;
+  tenantId: string;
+  userId: string;
+  type:
+    | 'work_order_assigned'
+    | 'work_order_sla_warning'
+    | 'work_order_overdue'
+    | 'workflow_task_assigned'
+    | 'workflow_task_rejected'
+    | 'workflow_completed';
+  title: string;
+  body: string | null;
+  actionUrl: string | null;
+  payload: Record<string, unknown>;
+  isRead: boolean;
+  createdAt: string;
 }
