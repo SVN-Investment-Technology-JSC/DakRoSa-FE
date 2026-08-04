@@ -45,9 +45,15 @@ export interface WorkflowNode {
   type: WorkflowNodeType;
   name: string;
   description?: string | null;
-  config: Record<string, unknown>;
-  uiPosition: { x?: number; y?: number };
-  assignees: WorkflowAssignee[];
+  config?: Record<string, unknown>;
+  uiPosition?: { x?: number; y?: number };
+}
+
+export interface WorkflowRoleMapping {
+  definitionId?: string;
+  variableKey: string;
+  mappedType: 'ROLE' | 'USER' | 'DEPT' | 'POSITION' | string;
+  mappedValue: string;
 }
 
 export interface WorkflowTransition {
@@ -70,6 +76,8 @@ export interface WorkflowVersion {
   status: 'draft' | 'published' | 'retired';
   changelog: string | null;
   publishedAt: string | null;
+  nodes?: WorkflowNode[];
+  transitions?: WorkflowTransition[];
 }
 
 export interface WorkflowDefinition {

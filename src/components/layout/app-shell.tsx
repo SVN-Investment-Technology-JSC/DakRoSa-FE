@@ -37,16 +37,11 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
-<<<<<<< HEAD:src/components/layout/app-shell.tsx
 import { Button } from '@/components/ui/button';
 import { BrandMark } from '@/components/auth/brand-mark';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { NotificationCenter } from './notification-center';
-=======
-import { BrandMark } from './brand-mark';
-import { NotificationBell } from './notification-bell';
->>>>>>> f2a2edf (feat(workflow): add workflow mini-map, notification bell, and workflow template page):src/components/app-shell.tsx
 
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
@@ -555,13 +550,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {activeChild?.label ?? activeItem?.label ?? 'Không gian doanh nghiệp'}
             </strong>
           </div>
-<<<<<<< HEAD:src/components/layout/app-shell.tsx
           {hasPermission(user, PERMISSIONS.NOTIFICATIONS_VIEW) ? (
             <NotificationCenter tenantSlug={user.activeTenant.slug} />
           ) : null}
-=======
-          <NotificationBell />
->>>>>>> f2a2edf (feat(workflow): add workflow mini-map, notification bell, and workflow template page):src/components/app-shell.tsx
         </header>
         <main
           className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"

@@ -5,6 +5,7 @@ import type {
   WorkflowInstance,
   WorkflowValidation,
   CMMSWorkflowTemplate,
+  WorkflowRoleMapping,
 } from '@/types/workflow';
 
 export const workflowApi = {
@@ -58,6 +59,20 @@ export const workflowApi = {
   getInstance: (id: string) =>
     apiRequest<WorkflowInstance>(`/workflow/instances/${id}`),
   getMyWorkItems: () => apiRequest('/workflow/work-items/mine'),
+  getMasterBoard: (id: string) =>
+    apiRequest<WorkflowRoleMapping[]>(`/workflow/definitions/${id}/master-board`),
+  updateMasterBoard: (id: string, mappings: WorkflowRoleMapping[]) =>
+    apiRequest<{ success: boolean }>(`/workflow/definitions/${id}/master-board`, {
+      method: 'PUT',
+      body: JSON.stringify({ mappings }),
+    }),
+  getGlobalMasterBoard: () =>
+    apiRequest<{ definitions: WorkflowDefinition[]; mappings: WorkflowRoleMapping[] }>(`/workflow/master-board`),
+  updateMasterBoardCell: (workflowId: string, variableKey: string, mappedType: string, mappedValue: string) =>
+    apiRequest<WorkflowRoleMapping | { success: boolean; deleted: boolean }>(`/workflow/master-board/cell`, {
+      method: 'PUT',
+      body: JSON.stringify({ workflowId, variableKey, mappedType, mappedValue }),
+    }),
 };
 
 export async function listWorkflowTemplates(): Promise<CMMSWorkflowTemplate[]> {

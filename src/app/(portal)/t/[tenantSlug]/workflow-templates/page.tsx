@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { PageHeading } from '@/components/page-heading';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { WorkflowMiniMap } from '@/components/workflow-minimap';
+
 import { listWorkflowTemplates } from '@/lib/api-workflow';
 import type { CMMSWorkflowTemplate } from '@/types/workflow';
 import { GitBranch, ChevronDown, ChevronUp, Clock, Users } from 'lucide-react';
@@ -59,10 +59,10 @@ function TemplateRow({ template }: { template: CMMSWorkflowTemplate }) {
         </span>
       </button>
 
-      {/* Mini-map expandable panel */}
+      {/* Mini-map expandable panel (Temporarily removed) */}
       {expanded && (
-        <div className="border-t border-[#DDE5DC] bg-[#FAFCFA] p-4">
-          <WorkflowMiniMap templateId={template.id} height={360} />
+        <div className="border-t border-[#DDE5DC] bg-[#FAFCFA] p-4 text-center text-gray-400 text-sm">
+          (Tính năng xem trước sơ đồ tạm ẩn)
         </div>
       )}
     </div>

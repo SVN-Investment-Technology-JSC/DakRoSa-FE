@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MultiSelectVariables } from '@/components/ui/multi-select-variables';
 import {
   Select,
   SelectContent,
@@ -73,6 +74,9 @@ import {
   WorkflowFlowCanvas,
 } from './workflow-flow-canvas';
 import { MaintenanceShell } from './maintenance-shell';
+import { MasterBoardModal } from './master-board-modal';
+import { MasterBoardMatrix } from './master-board-matrix';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const nodeMeta: Record<
   WorkflowNodeType,
@@ -359,16 +363,7 @@ function newNode(type: WorkflowNodeType, index: number): WorkflowNode {
       x: Math.min(860, 80 + (index % 5) * 205),
       y: 80 + (Math.floor(index / 5) % 4) * 125,
     },
-    assignees:
-      type === 'HUMAN_TASK'
-        ? [
-          {
-            type: 'CREATOR',
-            strategy: 'ANY',
-            config: {},
-          },
-        ]
-        : [],
+    
   };
 }
 
@@ -388,6 +383,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [isMasterBoardOpen, setMasterBoardOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [archiveBusyId, setArchiveBusyId] = useState('');
@@ -459,28 +455,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     () => nodes.find((node) => node.key === selectedNodeKey) ?? null,
     [nodes, selectedNodeKey],
   );
-  const assigneeSubjectOptions = useMemo(() => {
-    const type = activeNode?.assignees[0]?.type;
-    if (type === 'USER') {
-      return users
-        .filter((item) => item.isActive)
-        .map((item) => ({ id: item.id, label: item.displayName }));
-    }
-    if (type === 'ROLE') {
-      return roles.map((item) => ({ id: item.id, label: item.name }));
-    }
-    if (type === 'ORGANIZATION_UNIT') {
-      return organization.units
-        .filter((item) => item.isActive)
-        .map((item) => ({ id: item.id, label: `${item.code} · ${item.name}` }));
-    }
-    if (type === 'POSITION') {
-      return organization.positions
-        .filter((item) => item.isActive)
-        .map((item) => ({ id: item.id, label: `${item.code} · ${item.name}` }));
-    }
-    return [];
-  }, [activeNode?.assignees, organization, roles, users]);
+  
 
   const activeTransitions = useMemo(
     () => transitions.filter((transition) => transition.sourceKey === selectedNodeKey),
@@ -536,7 +511,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const addFormField = () => {
     if (!activeNode) return;
     const fields =
-      (activeNode.config.formFields as WorkflowFormField[] | undefined) ?? [];
+      (activeNode.config?.formFields as WorkflowFormField[] | undefined) ?? [];
     let index = fields.length + 1;
     const keys = new Set(fields.map((field) => field.key));
     let key = `field_${index}`;
@@ -553,7 +528,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   ) => {
     if (!activeNode) return;
     const fields =
-      (activeNode.config.formFields as WorkflowFormField[] | undefined) ?? [];
+      (activeNode.config?.formFields as WorkflowFormField[] | undefined) ?? [];
     updateFormFields(
       fields.map((field, fieldIndex) =>
         fieldIndex === index ? { ...field, ...patch } : field,
@@ -564,7 +539,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const removeFormField = (index: number) => {
     if (!activeNode) return;
     const fields =
-      (activeNode.config.formFields as WorkflowFormField[] | undefined) ?? [];
+      (activeNode.config?.formFields as WorkflowFormField[] | undefined) ?? [];
     updateFormFields(
       fields.filter((_, fieldIndex) => fieldIndex !== index),
     );
@@ -665,14 +640,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           description: node.description,
           config: node.config,
           uiPosition: node.uiPosition,
-          assignees: node.assignees.map((rule) => ({
-            type: rule.type,
-            subjectId: rule.subjectId || undefined,
-            fieldKey: rule.fieldKey || undefined,
-            strategy: rule.strategy,
-            quorum: rule.quorum || undefined,
-            config: rule.config,
-          })),
+          
         })),
         transitions: transitions.map((transition) => ({
           sourceKey: transition.sourceKey ?? '',
@@ -859,7 +827,17 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </div>
         }
       >
-        <div className="grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]">
+        
+        <Tabs defaultValue="list" className="w-full">
+          <div className="mb-4 flex items-center justify-between">
+            <TabsList className="bg-white/50 p-1 border border-[#DDE5DC]">
+              <TabsTrigger value="list" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm">Danh sách Quy trình</TabsTrigger>
+              <TabsTrigger value="matrix" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm">Ma trận Master</TabsTrigger>
+            </TabsList>
+          </div>
+          
+          <TabsContent value="list" className="mt-0">
+            <div className="grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]">
           <aside className="border-b border-[#E4EAE3] bg-[#F8FAF7] xl:border-b-0 xl:border-r">
             <div className="border-b border-[#E4EAE3] p-4">
               <strong className="text-sm text-[#334039]">Quy trình của doanh nghiệp</strong>
@@ -909,6 +887,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   <Copy />
                   Nhân bản quy trình
                 </Button>
+
                 {canManage ? (
                   <Popconfirm
                     title="Lưu trữ quy trình?"
@@ -1049,9 +1028,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   {validation.valid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
                   {validation.valid
                     ? 'Quy trình hợp lệ'
-                    : `${validation.errors.length} lỗi cần xử lý`}
+                    : `${(validation.errors || []).length} lỗi cần xử lý`}
                 </div>
-                {[...validation.errors, ...validation.warnings].slice(0, 4).map((message) => (
+                {[...(validation.errors || []), ...(validation.warnings || [])].slice(0, 4).map((message) => (
                   <div key={message} className="mt-1 pl-6 text-xs">
                     • {message}
                   </div>
@@ -1105,169 +1084,41 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
                     <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      Quy tắc người nhận
-                      <Select
-                        value={activeNode.assignees[0]?.type ?? 'CREATOR'}
+                      Người thực hiện (Doers - Các biến số)
+                      <MultiSelectVariables
+                        value={((activeNode.config?.doers as string[]) || [])}
                         disabled={!canManage}
-                        onValueChange={(value) => {
-                          const type = value as WorkflowAssigneeType;
-                          const rule: WorkflowAssignee = {
-                            type,
-                            strategy: 'ANY',
-                            config: {},
-                            fieldKey:
-                              type === 'REQUEST_FIELD' ? 'assigneeId' : undefined,
-                          };
-                          updateNode(activeNode.key, { assignees: [rule] });
-                        }}
-                      >
-                        <SelectTrigger className="w-full bg-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent position="popper" align="start">
-                          {(Object.keys(assigneeLabels) as WorkflowAssigneeType[]).map(
-                            (type) => (
-                              <SelectItem key={type} value={type}>
-                                {assigneeLabels[type]}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
+                        onChange={(vals) =>
+                          updateNode(activeNode.key, {
+                            config: {
+                              ...activeNode.config,
+                              doers: vals,
+                            },
+                          })
+                        }
+                      />
                     </Label>
-                    {activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
-                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                        Tên trường trên phiếu
-                        <Select
-                          value={activeNode.assignees[0]?.fieldKey ?? 'assigneeId'}
-                          disabled={!canManage}
-                          onValueChange={(fieldKey) =>
-                            updateNode(activeNode.key, {
-                              assignees: [
-                                {
-                                  ...activeNode.assignees[0],
-                                  fieldKey,
-                                },
-                              ],
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-full bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent position="popper" align="start">
-                            <SelectItem value="assigneeId">Người thực hiện mặc định</SelectItem>
-                            <SelectItem value="technicalReviewerId">Người kiểm tra kỹ thuật</SelectItem>
-                            <SelectItem value="createdBy">Người tạo phiếu</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Label>
-                    ) : null}
-                    {['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
-                      activeNode.assignees[0]?.type ?? '',
-                    ) ? (
-                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                        Đối tượng nhận việc
-                        {assigneeSubjectOptions.length ? (
-                          <Select
-                            value={activeNode.assignees[0]?.subjectId || '__none__'}
-                            disabled={!canManage}
-                            onValueChange={(subjectId) =>
-                              updateNode(activeNode.key, {
-                                assignees: [
-                                  {
-                                    ...activeNode.assignees[0],
-                                    subjectId:
-                                      subjectId === '__none__' ? undefined : subjectId,
-                                  },
-                                ],
-                              })
-                            }
-                          >
-                            <SelectTrigger className="w-full bg-white">
-                              <SelectValue placeholder="Chọn đối tượng" />
-                            </SelectTrigger>
-                            <SelectContent position="popper" align="start">
-                              <SelectItem value="__none__">Chọn đối tượng</SelectItem>
-                              {assigneeSubjectOptions.map((option) => (
-                                <SelectItem key={option.id} value={option.id}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input
-                            value={activeNode.assignees[0]?.subjectId ?? ''}
-                            disabled={!canManage}
-                            placeholder="Nhập mã định danh đối tượng"
-                            onChange={(event) =>
-                              updateNode(activeNode.key, {
-                                assignees: [
-                                  {
-                                    ...activeNode.assignees[0],
-                                    subjectId: event.target.value,
-                                  },
-                                ],
-                              })
-                            }
-                          />
-                        )}
-                      </Label>
-                    ) : null}
-                    {activeNode.assignees[0]?.type ===
-                      'MANAGER_OF_REQUESTER' ? (
-                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                        Chức danh quản lý dự phòng
-                        <Select
-                          value={
-                            String(
-                              activeNode.assignees[0]?.config
-                                ?.managerPositionId ?? '',
-                            ) || '__none__'
-                          }
-                          disabled={!canManage}
-                          onValueChange={(managerPositionId) =>
-                            updateNode(activeNode.key, {
-                              assignees: [
-                                {
-                                  ...activeNode.assignees[0],
-                                  config: {
-                                    ...activeNode.assignees[0]?.config,
-                                    managerPositionId:
-                                      managerPositionId === '__none__'
-                                        ? undefined
-                                        : managerPositionId,
-                                  },
-                                },
-                              ],
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-full bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent position="popper" align="start">
-                            <SelectItem value="__none__">
-                              Dùng managerUserId trong đơn vị tổ chức
-                            </SelectItem>
-                            {organization.positions
-                              .filter((position) => position.isActive)
-                              .map((position) => (
-                                <SelectItem key={position.id} value={position.id}>
-                                  {position.code} · {position.name}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </Label>
-                    ) : null}
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      Người quan sát/báo cáo (Reporters)
+                      <MultiSelectVariables
+                        value={((activeNode.config?.reporters as string[]) || [])}
+                        disabled={!canManage}
+                        onChange={(vals) =>
+                          updateNode(activeNode.key, {
+                            config: {
+                              ...activeNode.config,
+                              reporters: vals,
+                            },
+                          })
+                        }
+                      />
+                    </Label>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       SLA (phút)
                       <Input
                         type="number"
                         min={1}
-                        value={Number(activeNode.config.slaMinutes ?? 1440)}
+                        value={Number(activeNode.config?.slaMinutes ?? 1440)}
                         disabled={!canManage}
                         onChange={(event) =>
                           updateNode(activeNode.key, {
@@ -1283,7 +1134,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       Quyền bắt buộc (tùy chọn)
                       <Input
                         value={String(
-                          activeNode.config.requiredPermission ?? '',
+                          activeNode.config?.requiredPermission ?? '',
                         )}
                         disabled={!canManage}
                         placeholder="Ví dụ: work_order.review"
@@ -1321,7 +1172,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         ) : null}
                       </div>
                       {(
-                        (activeNode.config.formFields as
+                        (activeNode.config?.formFields as
                           | WorkflowFormField[]
                           | undefined) ?? []
                       ).map((field, index) => (
@@ -1540,7 +1391,20 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             )}
           </aside>
         </div>
+          </TabsContent>
+          
+          <TabsContent value="matrix" className="mt-0 h-[calc(100vh-140px)]">
+            <MasterBoardMatrix />
+          </TabsContent>
+        </Tabs>
       </MaintenanceShell>
+
+      <MasterBoardModal
+        tenantSlug={tenantSlug}
+        definitionId={selected?.id ?? null}
+        isOpen={isMasterBoardOpen}
+        onClose={() => setMasterBoardOpen(false)}
+      />
 
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">

@@ -85,7 +85,7 @@ const WorkflowFlowNodeCard = memo(function WorkflowFlowNodeCard({
 }: NodeProps<WorkflowFlowNode>) {
   const { workflowNode, presentation } = data;
   const Icon = presentation.icon;
-  const slaMinutes = Number(workflowNode.config.slaMinutes ?? 0);
+  const slaMinutes = Number(workflowNode.config?.slaMinutes ?? 0);
 
   return (
     <div
@@ -175,8 +175,8 @@ function createFlowNode(
     id: node.key,
     type: 'workflowNode',
     position: {
-      x: Number(node.uiPosition.x ?? 0),
-      y: Number(node.uiPosition.y ?? 0),
+      x: Number(node.uiPosition?.x ?? 0),
+      y: Number(node.uiPosition?.y ?? 0),
     },
     initialWidth: workflowNodeWidth,
     initialHeight: workflowNodeHeight,
@@ -235,10 +235,10 @@ function WorkflowFlowCanvasInner({
 
         const previousPosition = existing.data.workflowNode.uiPosition;
         const externalPositionChanged =
-          Number(previousPosition.x ?? 0) !==
-            Number(workflowNode.uiPosition.x ?? 0) ||
-          Number(previousPosition.y ?? 0) !==
-            Number(workflowNode.uiPosition.y ?? 0);
+          Number(previousPosition?.x ?? 0) !==
+            Number(workflowNode.uiPosition?.x ?? 0) ||
+          Number(previousPosition?.y ?? 0) !==
+            Number(workflowNode.uiPosition?.y ?? 0);
         const position = externalPositionChanged
           ? projected.position
           : existing.position;
