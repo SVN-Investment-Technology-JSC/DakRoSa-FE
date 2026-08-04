@@ -197,11 +197,9 @@ function withSelectedStepPermissions(
   config: Record<string, unknown>,
   permissions: string[],
 ): Record<string, unknown> {
-  const {
-    requiredPermission: _legacyRequiredPermission,
-    requiredPermissions: _selectedPermissions,
-    ...nextConfig
-  } = config;
+  const nextConfig = { ...config };
+  delete nextConfig.requiredPermission;
+  delete nextConfig.requiredPermissions;
   if (!permissions.length) return nextConfig;
   return { ...nextConfig, requiredPermissions: permissions };
 }
