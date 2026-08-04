@@ -52,6 +52,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PERMISSIONS } from '@/lib/navigation';
 import { hasPermission } from '@/lib/permissions';
 import { workflowApi } from '@/lib/api-workflow';
+import { useAuth } from '@/providers/auth-provider';
 import type {
   WorkflowDefinition,
   WorkflowFormField,
