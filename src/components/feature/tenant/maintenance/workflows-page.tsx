@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Copy,
   Diamond,
@@ -133,6 +134,24 @@ const assigneeLabels: Record<WorkflowAssigneeType, string> = {
   MANAGER_OF_REQUESTER: 'Quản lý người yêu cầu',
 };
 
+const workflowStepPermissionOptions = [
+  {
+    key: PERMISSIONS.WORK_ORDER_UPDATE,
+    label: 'Cập nhật phiếu công việc',
+    description: 'Ghi nhận và điều chỉnh thông tin phiếu.',
+  },
+  {
+    key: PERMISSIONS.WORK_ORDER_EXECUTE,
+    label: 'Thực hiện công việc',
+    description: 'Xử lý công việc bảo trì được giao.',
+  },
+  {
+    key: PERMISSIONS.WORK_ORDER_REVIEW,
+    label: 'Kiểm tra, nghiệm thu',
+    description: 'Kiểm tra kết quả và xác nhận hoàn thành.',
+  },
+] as const;
+
 function slugKey(value: string) {
   return value
     .normalize('NFD')
@@ -141,6 +160,50 @@ function slugKey(value: string) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 70);
+}
+
+function transitionIdentity(transition: WorkflowTransition) {
+  return transition.id ?? transition.clientId ?? transition.actionKey;
+}
+
+function durationParts(totalMinutes: unknown) {
+  const normalized =
+    typeof totalMinutes === 'number' && Number.isFinite(totalMinutes)
+      ? Math.max(0, Math.floor(totalMinutes))
+      : 1440;
+  return {
+    hours: Math.floor(normalized / 60),
+    minutes: normalized % 60,
+  };
+}
+
+function durationInput(value: string, maximum?: number) {
+  const parsed = Number.parseInt(value, 10);
+  const normalized = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  return maximum === undefined ? normalized : Math.min(maximum, normalized);
+}
+
+function selectedStepPermissions(config: Record<string, unknown>): string[] {
+  const configured = config.requiredPermissions;
+  const values = Array.isArray(configured)
+    ? configured
+    : typeof config.requiredPermission === 'string'
+      ? [config.requiredPermission]
+      : [];
+  return [...new Set(values.filter((permission): permission is string => typeof permission === 'string'))];
+}
+
+function withSelectedStepPermissions(
+  config: Record<string, unknown>,
+  permissions: string[],
+): Record<string, unknown> {
+  const {
+    requiredPermission: _legacyRequiredPermission,
+    requiredPermissions: _selectedPermissions,
+    ...nextConfig
+  } = config;
+  if (!permissions.length) return nextConfig;
+  return { ...nextConfig, requiredPermissions: permissions };
 }
 
 function nodeKeyFromId(nodes: WorkflowNode[], id?: string) {
@@ -389,6 +452,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [permissionPanelExpanded, setPermissionPanelExpanded] = useState(false);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [archiveBusyId, setArchiveBusyId] = useState('');
   const [definitionPendingDeletion, setDefinitionPendingDeletion] =
@@ -515,9 +579,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           const position = positionByKey.get(node.key);
           return position
             ? {
-                ...node,
-                uiPosition: { x: position.x, y: position.y },
-              }
+              ...node,
+              uiPosition: { x: position.x, y: position.y },
+            }
             : node;
         }),
       );
@@ -608,17 +672,14 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       toast.error('Cần ít nhất hai node để tạo kết nối.');
       return;
     }
-    let index = activeTransitions.length + 1;
-    let actionKey = `action_${index}`;
-    const used = new Set(activeTransitions.map((item) => item.actionKey));
-    while (used.has(actionKey)) actionKey = `action_${++index}`;
     setTransitions((current) => [
       ...current,
       {
+        clientId: crypto.randomUUID(),
         sourceKey: activeNode.key,
         targetKey: target.key,
-        actionKey,
-        label: 'Chuyển bước',
+        actionKey: '',
+        label: 'Hành động mới',
         sortOrder: activeTransitions.length,
       },
     ]);
@@ -626,13 +687,13 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   };
 
   const updateTransition = (
-    actionKey: string,
+    transitionId: string,
     patch: Partial<WorkflowTransition>,
   ) => {
     setTransitions((current) =>
       current.map((transition) =>
         transition.sourceKey === selectedNodeKey &&
-          transition.actionKey === actionKey
+          transitionIdentity(transition) === transitionId
           ? { ...transition, ...patch }
           : transition,
       ),
@@ -640,13 +701,13 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     setValidation(null);
   };
 
-  const removeTransition = (actionKey: string) => {
+  const removeTransition = (transitionId: string) => {
     setTransitions((current) =>
       current.filter(
         (transition) =>
           !(
             transition.sourceKey === selectedNodeKey &&
-            transition.actionKey === actionKey
+            transitionIdentity(transition) === transitionId
           ),
       ),
     );
@@ -675,9 +736,10 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           })),
         })),
         transitions: transitions.map((transition) => ({
+          id: transition.id,
           sourceKey: transition.sourceKey ?? '',
           targetKey: transition.targetKey ?? '',
-          actionKey: transition.actionKey,
+          actionKey: transition.actionKey || undefined,
           label: transition.label,
           condition: transition.condition ?? undefined,
           sortOrder: transition.sortOrder,
@@ -836,7 +898,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       <MaintenanceShell
         tenantSlug={tenantSlug}
         title="Mẫu quy trình"
-        description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
+        description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, thời hạn xử lý và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -873,8 +935,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   variant="ghost"
                   onClick={() => void chooseDefinition(definition.id)}
                   className={`h-auto w-full flex-col items-stretch rounded-xl p-3 text-left whitespace-normal transition ${selected?.id === definition.id
-                      ? 'bg-white shadow-sm ring-1 ring-emerald-200'
-                      : 'hover:bg-white/80'
+                    ? 'bg-white shadow-sm ring-1 ring-emerald-200'
+                    : 'hover:bg-white/80'
                     }`}
                 >
                   <span className="flex items-center gap-2">
@@ -1041,8 +1103,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             {validation ? (
               <div
                 className={`border-t px-4 py-3 text-sm ${validation.valid
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-red-200 bg-red-50 text-red-700'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-red-200 bg-red-50 text-red-700'
                   }`}
               >
                 <div className="flex items-center gap-2 font-bold">
@@ -1067,7 +1129,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                 <strong className="text-sm text-[#334039]">Thuộc tính node</strong>
               </span>
               <p className="mt-1 text-xs text-[#79837B]">
-                Người nhận, SLA và hành động chuyển bước
+                Người nhận, thời hạn xử lý và hành động chuyển bước
               </p>
             </header>
 
@@ -1103,7 +1165,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
 
                 {activeNode.type === 'HUMAN_TASK' ? (
                   <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
-                    <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
+                    <strong className="text-xs text-[#46534B]">
+                      Giao việc & thời hạn xử lý
+                    </strong>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Quy tắc người nhận
                       <Select
@@ -1262,42 +1326,149 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         </Select>
                       </Label>
                     ) : null}
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      SLA (phút)
-                      <Input
-                        type="number"
-                        min={1}
-                        value={Number(activeNode.config.slaMinutes ?? 1440)}
-                        disabled={!canManage}
-                        onChange={(event) =>
-                          updateNode(activeNode.key, {
-                            config: {
-                              ...activeNode.config,
-                              slaMinutes: Number(event.target.value),
-                            },
-                          })
-                        }
-                      />
-                    </Label>
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      Quyền bắt buộc (tùy chọn)
-                      <Input
-                        value={String(
-                          activeNode.config.requiredPermission ?? '',
-                        )}
-                        disabled={!canManage}
-                        placeholder="Ví dụ: work_order.review"
-                        onChange={(event) =>
-                          updateNode(activeNode.key, {
-                            config: {
-                              ...activeNode.config,
-                              requiredPermission:
-                                event.target.value.trim() || undefined,
-                            },
-                          })
-                        }
-                      />
-                    </Label>
+                    <div className="grid gap-1.5 text-[11px] font-bold text-[#68736B]">
+                      <span>Thời hạn xử lý</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Label className="grid gap-1 text-[11px] font-medium text-[#68736B]">
+                          Giờ
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={durationParts(activeNode.config.slaMinutes).hours}
+                            disabled={!canManage}
+                            onChange={(event) => {
+                              const current = durationParts(
+                                activeNode.config.slaMinutes,
+                              );
+                              updateNode(activeNode.key, {
+                                config: {
+                                  ...activeNode.config,
+                                  slaMinutes:
+                                    durationInput(event.target.value) * 60 +
+                                    current.minutes,
+                                },
+                              });
+                            }}
+                          />
+                        </Label>
+                        <Label className="grid gap-1 text-[11px] font-medium text-[#68736B]">
+                          Phút
+                          <Input
+                            type="number"
+                            min={0}
+                            max={59}
+                            step={1}
+                            value={durationParts(activeNode.config.slaMinutes).minutes}
+                            disabled={!canManage}
+                            onChange={(event) => {
+                              const current = durationParts(
+                                activeNode.config.slaMinutes,
+                              );
+                              updateNode(activeNode.key, {
+                                config: {
+                                  ...activeNode.config,
+                                  slaMinutes:
+                                    current.hours * 60 +
+                                    durationInput(event.target.value, 59),
+                                },
+                              });
+                            }}
+                          />
+                        </Label>
+                      </div>
+                      <p className="font-normal text-[#7B867E]">
+                        Nhập 0 giờ và 0 phút nếu không đặt thời hạn.
+                      </p>
+                    </div>
+                    {(() => {
+                      const selected = selectedStepPermissions(activeNode.config);
+                      const updateSelectedPermissions = (permissions: string[]) =>
+                        updateNode(activeNode.key, {
+                          config: withSelectedStepPermissions(
+                            activeNode.config,
+                            permissions,
+                          ),
+                        });
+
+                      return (
+                        <div className="rounded-xl border border-[#E2E8E1] bg-[#F9FBF8]">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-auto w-full justify-between rounded-xl px-3 py-2.5 text-left text-xs text-[#46534B] hover:bg-white"
+                            aria-expanded={permissionPanelExpanded}
+                            onClick={() =>
+                              setPermissionPanelExpanded((expanded) => !expanded)
+                            }
+                          >
+                            <span className="grid gap-0.5">
+                              <strong className='text-[12px]'>Quyền được phép xử lý (tùy chọn)</strong>
+                              <span className="text-[10px] font-normal text-[#7B867E]">
+                                {selected.length
+                                  ? `Đã chọn ${selected.length} quyền`
+                                  : 'Không giới hạn quyền theo bước'}
+                              </span>
+                            </span>
+                            <ChevronDown
+                              className={`transition-transform ${permissionPanelExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </Button>
+                          {permissionPanelExpanded ? (
+                            <div className="grid gap-2 border-t border-[#E2E8E1] p-3">
+                              <p className="text-[10px] text-[#7B867E]">
+                                Chọn một hoặc nhiều quyền. Người nhận chỉ cần có
+                                ít nhất một quyền đã chọn để xử lý bước này.
+                              </p>
+                              <div className="grid gap-2">
+                                {workflowStepPermissionOptions.map((option) => (
+                                  <div
+                                    key={option.key}
+                                    className="flex items-start gap-2 rounded-lg px-1 py-1 text-xs text-[#46534B] hover:bg-white"
+                                  >
+                                    <Checkbox
+                                      aria-label={option.label}
+                                      checked={selected.includes(option.key)}
+                                      disabled={!canManage}
+                                      onCheckedChange={(checked) => {
+                                        const nextPermissions =
+                                          checked === true
+                                            ? [...new Set([...selected, option.key])]
+                                            : selected.filter(
+                                              (permission) =>
+                                                permission !== option.key,
+                                            );
+                                        updateSelectedPermissions(nextPermissions);
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={!canManage}
+                                      className="grid min-w-0 flex-1 cursor-pointer gap-0.5 text-left leading-tight disabled:cursor-not-allowed"
+                                      onClick={() =>
+                                        updateSelectedPermissions(
+                                          selected.includes(option.key)
+                                            ? selected.filter(
+                                              (permission) =>
+                                                permission !== option.key,
+                                            )
+                                            : [...selected, option.key],
+                                        )
+                                      }
+                                    >
+                                      <strong>{option.label}</strong>
+                                      <span className="text-[10px] font-normal text-[#7B867E]">
+                                        {option.description}
+                                      </span>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                     <div className="grid gap-2 border-t border-[#E7ECE6] pt-3">
                       <div className="flex items-center justify-between">
                         <span>
@@ -1434,7 +1605,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   </div>
                   {activeTransitions.map((transition) => (
                     <div
-                      key={transition.actionKey}
+                      key={transitionIdentity(transition)}
                       className="grid gap-2 rounded-2xl border border-[#DEE7DD] bg-white p-3"
                     >
                       <div className="flex items-center gap-2">
@@ -1445,7 +1616,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                           className="h-8"
                           aria-label="Nhãn hành động"
                           onChange={(event) =>
-                            updateTransition(transition.actionKey, {
+                            updateTransition(transitionIdentity(transition), {
                               label: event.target.value,
                             })
                           }
@@ -1456,33 +1627,20 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                             variant="ghost"
                             className="text-red-600"
                             aria-label="Xóa kết nối"
-                            onClick={() => removeTransition(transition.actionKey)}
+                            onClick={() => removeTransition(transitionIdentity(transition))}
                           >
                             <Trash2 />
                           </Button>
                         ) : null}
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
-                          Action key
-                          <Input
-                            value={transition.actionKey}
-                            disabled={!canManage}
-                            className="h-8 text-xs"
-                            onChange={(event) =>
-                              updateTransition(transition.actionKey, {
-                                actionKey: slugKey(event.target.value),
-                              })
-                            }
-                          />
-                        </Label>
+                      <div className="grid gap-2">
                         <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
                           Node đích
                           <Select
                             value={transition.targetKey}
                             disabled={!canManage}
                             onValueChange={(targetKey) =>
-                              updateTransition(transition.actionKey, {
+                              updateTransition(transitionIdentity(transition), {
                                 targetKey,
                               })
                             }
@@ -1501,14 +1659,17 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                             </SelectContent>
                           </Select>
                         </Label>
+                        {/* <p className="text-[10px] text-[#7B867E]">
+                          Mã kỹ thuật được hệ thống tự tạo khi lưu và giữ ổn định khi đổi tên.
+                        </p> */}
                       </div>
                       {activeNode.type === 'CONDITION' ? (
                         <ConditionEditor
-                          key={`${selected?.id ?? 'draft'}-${transition.actionKey}`}
+                          key={`${selected?.id ?? 'draft'}-${transitionIdentity(transition)}`}
                           condition={transition.condition}
                           disabled={!canManage}
                           onChange={(condition) =>
-                            updateTransition(transition.actionKey, { condition })
+                            updateTransition(transitionIdentity(transition), { condition })
                           }
                         />
                       ) : null}

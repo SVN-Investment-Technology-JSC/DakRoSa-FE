@@ -51,6 +51,7 @@ export interface WorkflowNode {
 
 export interface WorkflowTransition {
   id?: string;
+  clientId?: string;
   versionId?: string;
   sourceNodeId?: string;
   targetNodeId?: string;
@@ -92,9 +93,10 @@ export interface WorkflowDefinition {
 export interface WorkflowDraftInput {
   nodes: WorkflowNode[];
   transitions: Array<{
+    id?: string;
     sourceKey: string;
     targetKey: string;
-    actionKey: string;
+    actionKey?: string;
     label: string;
     condition?: Record<string, unknown>;
     sortOrder?: number;
@@ -113,7 +115,7 @@ export interface WorkflowAvailableAction {
   key: string;
   label: string;
   targetNodeId: string;
-  requiredPermission?: string | null;
+  requiredPermissions?: string[];
   formFields?: WorkflowFormField[];
 }
 
