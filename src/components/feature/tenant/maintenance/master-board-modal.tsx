@@ -32,35 +32,37 @@ interface MasterBoardModalProps {
   onClose: () => void;
 }
 
-export function MasterBoardModal({ tenantSlug, definitionId, isOpen, onClose }: MasterBoardModalProps) {
+export function MasterBoardModal({ definitionId, isOpen, onClose }: MasterBoardModalProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mappings, setMappings] = useState<WorkflowRoleMapping[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
 
-  useEffect(() => {
-    if (isOpen && definitionId) {
-      loadData();
-    } else {
-      setMappings([]);
-    }
-  }, [isOpen, definitionId, tenantSlug]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!definitionId) return;
     try {
       setLoading(true);
       const [boardData, rolesData] = await Promise.all([
-        workflowApi.getMasterBoard(definitionId!),
+        workflowApi.getMasterBoard(definitionId),
         rolesService.getRoles(),
       ]);
       setMappings(boardData);
       setRoles(rolesData || []);
-    } catch (err) {
+    } catch {
       toast.error('Lỗi khi tải dữ liệu Master Board');
     } finally {
       setLoading(false);
     }
-  }
+  }, [definitionId]);
+
+  useEffect(() => {
+    if (isOpen && definitionId) {
+      const timer = window.setTimeout(() => { void loadData(); }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isOpen, definitionId, loadData]);
+
+
 
   async function handleSave() {
     if (!definitionId) return;
@@ -76,7 +78,7 @@ export function MasterBoardModal({ tenantSlug, definitionId, isOpen, onClose }: 
       await workflowApi.updateMasterBoard(definitionId, mappings);
       toast.success('Lưu cấu hình thành công');
       onClose();
-    } catch (err) {
+    } catch {
       toast.error('Lỗi khi lưu cấu hình');
     } finally {
       setSaving(false);
@@ -109,7 +111,7 @@ export function MasterBoardModal({ tenantSlug, definitionId, isOpen, onClose }: 
         <DialogHeader>
           <DialogTitle>Bảng phân quyền tác nhân (Master Board)</DialogTitle>
           <DialogDescription>
-            Định nghĩa quy tắc giải mã từ các "Biến số tác nhân" (được thiết kế trong sơ đồ) sang "Vai trò / Người dùng" thực tế trong hệ thống.
+            Định nghĩa quy tắc giải mã từ các &quot;Biến số tác nhân&quot; (được thiết kế trong sơ đồ) sang &quot;Vai trò / Người dùng&quot; thực tế trong hệ thống.
           </DialogDescription>
         </DialogHeader>
 

@@ -52,16 +52,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PERMISSIONS } from '@/lib/navigation';
 import { hasPermission } from '@/lib/permissions';
 import { workflowApi } from '@/lib/api-workflow';
-import { useAuth } from '@/providers/auth-provider';
-import { rolesService } from '@/services/roles.service';
-import { tenancyService } from '@/services/tenancy.service';
-import { usersService } from '@/services/users.service';
-import type { Role } from '@/types/rbac';
-import type { Organization } from '@/types/tenancy';
-import type { UserRecord } from '@/types/user';
 import type {
-  WorkflowAssignee,
-  WorkflowAssigneeType,
   WorkflowDefinition,
   WorkflowFormField,
   WorkflowNode,
@@ -126,16 +117,7 @@ const nodeMeta: Record<
   },
 };
 
-const assigneeLabels: Record<WorkflowAssigneeType, string> = {
-  USER: 'Người dùng cụ thể',
-  ORGANIZATION_UNIT: 'Đơn vị tổ chức',
-  POSITION: 'Chức danh',
-  ROLE: 'Vai trò',
-  REQUEST_FIELD: 'Trường trên phiếu',
-  CREATOR: 'Người tạo phiếu',
-  PREVIOUS_STEP_ACTOR: 'Người xử lý bước trước',
-  MANAGER_OF_REQUESTER: 'Quản lý người yêu cầu',
-};
+
 
 function slugKey(value: string) {
   return value
@@ -390,12 +372,6 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [definitionPendingDeletion, setDefinitionPendingDeletion] =
     useState<WorkflowDefinition | null>(null);
   const [createForm, setCreateForm] = useState({ key: '', name: '', description: '' });
-  const [users, setUsers] = useState<UserRecord[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [organization, setOrganization] = useState<Organization>({
-    units: [],
-    positions: [],
-  });
   const hydrate = useCallback((definition: WorkflowDefinition) => {
     setSelected(definition);
     const graphNodes = definition.graph?.nodes ?? [];
@@ -432,24 +408,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     return () => window.clearTimeout(timer);
   }, [load, tenantSlug]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      const [userResult, roleResult, organizationResult] =
-        await Promise.allSettled([
-          usersService.getUsers(),
-          rolesService.getRoles(),
-          tenancyService.getOrganization(),
-        ]);
-      setUsers(userResult.status === 'fulfilled' ? userResult.value.items : []);
-      setRoles(roleResult.status === 'fulfilled' ? roleResult.value : []);
-      setOrganization(
-        organizationResult.status === 'fulfilled'
-          ? organizationResult.value
-          : { units: [], positions: [] },
-      );
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [tenantSlug]);
+
 
   const activeNode = useMemo(
     () => nodes.find((node) => node.key === selectedNodeKey) ?? null,
@@ -1400,7 +1359,6 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       </MaintenanceShell>
 
       <MasterBoardModal
-        tenantSlug={tenantSlug}
         definitionId={selected?.id ?? null}
         isOpen={isMasterBoardOpen}
         onClose={() => setMasterBoardOpen(false)}

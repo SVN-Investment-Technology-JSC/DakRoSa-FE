@@ -5,7 +5,7 @@ import { workflowApi } from '@/lib/api-workflow';
 import { rolesService } from '@/services/roles.service';
 import type { WorkflowDefinition, WorkflowRoleMapping } from '@/types/workflow';
 import type { Role } from '@/types/rbac';
-import { Input } from '@/components/ui/input';
+
 import { toast } from 'sonner';
 import { MultiSelectVariables } from '@/components/ui/multi-select-variables';
 import { MasterBoardSidePanel } from './master-board-side-panel';
@@ -32,7 +32,7 @@ export function MasterBoardMatrix() {
       setDefinitions(boardData.definitions || []);
       setMappings(boardData.mappings || []);
       setRoles(rolesData || []);
-    } catch (err) {
+    } catch {
       toast.error('Lỗi khi tải dữ liệu Master Board');
     } finally {
       setLoading(false);
@@ -53,7 +53,7 @@ export function MasterBoardMatrix() {
     if (added.length === 0 && removed.length === 0) return;
 
     try {
-      const promises: Promise<any>[] = [];
+      const promises: Promise<unknown>[] = [];
 
       for (const key of added) {
         promises.push(
@@ -71,7 +71,7 @@ export function MasterBoardMatrix() {
       toast.success('Đã lưu cấu hình phân vai');
 
       loadData();
-    } catch (err) {
+    } catch {
       toast.error('Lỗi khi lưu cấu hình');
     }
   };
