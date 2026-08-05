@@ -17,6 +17,8 @@ export type WorkflowAssigneeType =
   | 'PREVIOUS_STEP_ACTOR'
   | 'MANAGER_OF_REQUESTER';
 
+export type WorkflowAssignmentRole = 'EXECUTOR' | 'OBSERVER';
+
 export interface WorkflowFormField {
   key: string;
   label: string;
@@ -35,6 +37,7 @@ export interface WorkflowAssignee {
   strategy: 'ANY' | 'ALL' | 'QUORUM';
   quorum?: number | null;
   assigneeVariableKey?: string | null;
+  assignmentRole?: WorkflowAssignmentRole;
   config: Record<string, unknown>;
 }
 

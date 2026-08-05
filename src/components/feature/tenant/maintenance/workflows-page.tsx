@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { MultiSelectVariables } from '@/components/ui/multi-select-variables';
 import { PERMISSIONS } from '@/lib/navigation';
 import { hasPermission } from '@/lib/permissions';
 import { workflowApi } from '@/lib/api-workflow';
@@ -1014,26 +1015,6 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
           <div className="flex flex-wrap gap-2">
-            {canManage ? (
-              <Button
-                variant="outline"
-                className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                onClick={() => void openMasterMatrix()}
-              >
-                <UserRoundCheck />
-                Ma trận Master
-              </Button>
-            ) : null}
-            {selected && canManage ? (
-              <Button
-                variant="outline"
-                className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                onClick={() => void openMasterBoard()}
-              >
-                <UserRoundCheck />
-                Chi tiết Master Board
-              </Button>
-            ) : null}
             <Button
               variant="outline"
               className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
@@ -1054,6 +1035,19 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </div>
         }
       >
+        <div className="mb-4 flex items-center gap-1 rounded-xl border border-[#DCE5DB] bg-white p-1 shadow-sm">
+          <Button type="button" variant="ghost" className="bg-emerald-50 text-emerald-800">
+            Thiết kế quy trình
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-[#526057] hover:bg-emerald-50 hover:text-emerald-800"
+            onClick={() => void openMasterMatrix()}
+          >
+            Ma trận Master
+          </Button>
+        </div>
         <div className="grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]">
           <aside className="border-b border-[#E4EAE3] bg-[#F8FAF7] xl:border-b-0 xl:border-r">
             <div className="border-b border-[#E4EAE3] p-4">
@@ -1300,6 +1294,75 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
                     <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      Người thực hiện
+                      <MultiSelectVariables
+                        value={activeNode.assignees
+                          .filter(
+                            (rule) =>
+                              (rule.assignmentRole ?? 'EXECUTOR') === 'EXECUTOR' &&
+                              Boolean(rule.assigneeVariableKey),
+                          )
+                          .map((rule) => rule.assigneeVariableKey as string)}
+                        disabled={!canManage}
+                        placeholder="Chọn tác nhân thực hiện…"
+                        onChange={(variableKeys) =>
+                          updateNode(activeNode.key, {
+                            assignees: [
+                              ...activeNode.assignees.filter(
+                                (rule) =>
+                                  (rule.assignmentRole ?? 'EXECUTOR') !==
+                                  'EXECUTOR',
+                              ),
+                              ...variableKeys.map((assigneeVariableKey) => ({
+                                type: 'ROLE' as WorkflowAssigneeType,
+                                assigneeVariableKey,
+                                assignmentRole: 'EXECUTOR' as const,
+                                strategy: 'ANY' as const,
+                                config: {},
+                              })),
+                            ],
+                          })
+                        }
+                      />
+                      <span className="font-normal text-[#7C877F]">
+                        Người thực hiện được giao task và có quyền xử lý.
+                      </span>
+                    </Label>
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      Người quan sát
+                      <MultiSelectVariables
+                        value={activeNode.assignees
+                          .filter(
+                            (rule) =>
+                              rule.assignmentRole === 'OBSERVER' &&
+                              Boolean(rule.assigneeVariableKey),
+                          )
+                          .map((rule) => rule.assigneeVariableKey as string)}
+                        disabled={!canManage}
+                        placeholder="Chọn tác nhân quan sát…"
+                        onChange={(variableKeys) =>
+                          updateNode(activeNode.key, {
+                            assignees: [
+                              ...activeNode.assignees.filter(
+                                (rule) => rule.assignmentRole !== 'OBSERVER',
+                              ),
+                              ...variableKeys.map((assigneeVariableKey) => ({
+                                type: 'ROLE' as WorkflowAssigneeType,
+                                assigneeVariableKey,
+                                assignmentRole: 'OBSERVER' as const,
+                                strategy: 'ANY' as const,
+                                config: {},
+                              })),
+                            ],
+                          })
+                        }
+                      />
+                      <span className="font-normal text-[#7C877F]">
+                        Người quan sát nhận thông báo và chỉ xem tiến độ/lịch sử.
+                      </span>
+                    </Label>
+                    <div className="hidden">
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Nguồn người nhận
                       <Select
                         value={
@@ -1528,6 +1591,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         </Select>
                       </Label>
                     ) : null}
+                    </div>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       SLA (phút)
                       <Input
