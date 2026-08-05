@@ -113,7 +113,8 @@ export function MasterBoardMatrix() {
                 )}
                 {definitions.map((def) => {
                   const requiredVars = new Set<string>();
-                  def.versions?.[0]?.nodes?.forEach(node => {
+                  const activeVersion = [...(def.versions || [])].sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0))[0];
+                  activeVersion?.nodes?.forEach(node => {
                     const doers = (node.config?.doers as string[]) || [];
                     const reporters = (node.config?.reporters as string[]) || [];
                     doers.forEach(d => requiredVars.add(d));
@@ -121,10 +122,13 @@ export function MasterBoardMatrix() {
                   });
 
                   const mappedVars = new Set(
-                    mappings.filter(m => m.definitionId === def.id).map(m => m.variableKey)
+                    mappings
+                      .filter(m => m.definitionId === def.id && m.mappedType === 'ROLE' && roles.some(r => r.id === m.mappedValue))
+                      .map(m => m.variableKey)
                   );
 
                   const isMissing = Array.from(requiredVars).some(v => !mappedVars.has(v));
+                  const allVarsForDropdown = Array.from(new Set([...Array.from(requiredVars), ...Array.from(mappedVars)])).sort((a,b) => parseInt(a) - parseInt(b));
                   const isSelected = selectedDefId === def.id;
 
                   let rowBg = 'bg-white hover:bg-blue-50/50';
@@ -150,7 +154,7 @@ export function MasterBoardMatrix() {
                           <td key={role.id} className="px-2 py-2 border-b border-r border-[#DDE5DC]">
                             <MultiSelectVariables
                               value={keys}
-                              options={Array.from(requiredVars)}
+                              options={allVarsForDropdown}
                               placeholder=""
                               onChange={(vals) => {
                                 handleCellChange(def.id, role.id, keys, vals);

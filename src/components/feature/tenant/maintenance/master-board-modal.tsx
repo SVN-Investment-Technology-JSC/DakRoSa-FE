@@ -26,7 +26,6 @@ import type { WorkflowRoleMapping } from '@/types/workflow';
 import type { Role } from '@/types/rbac';
 
 interface MasterBoardModalProps {
-  tenantSlug: string;
   definitionId: string | null;
   isOpen: boolean;
   onClose: () => void;
