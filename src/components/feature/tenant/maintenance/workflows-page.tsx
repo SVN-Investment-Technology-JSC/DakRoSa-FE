@@ -1036,19 +1036,24 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         }
       >
         <div className="mb-4 flex items-center gap-1 rounded-xl border border-[#DCE5DB] bg-white p-1 shadow-sm">
-          <Button type="button" variant="ghost" className="bg-emerald-50 text-emerald-800">
+          <Button
+            type="button"
+            variant="ghost"
+            className={!masterMatrixOpen ? 'bg-emerald-50 text-emerald-800' : ''}
+            onClick={() => setMasterMatrixOpen(false)}
+          >
             Thiết kế quy trình
           </Button>
           <Button
             type="button"
             variant="ghost"
-            className="text-[#526057] hover:bg-emerald-50 hover:text-emerald-800"
+            className={masterMatrixOpen ? 'bg-emerald-50 text-emerald-800' : 'text-[#526057] hover:bg-emerald-50 hover:text-emerald-800'}
             onClick={() => void openMasterMatrix()}
           >
             Ma trận Master
           </Button>
         </div>
-        <div className="grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]">
+        <div className={masterMatrixOpen ? 'hidden' : 'grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]'}>
           <aside className="border-b border-[#E4EAE3] bg-[#F8FAF7] xl:border-b-0 xl:border-r">
             <div className="border-b border-[#E4EAE3] p-4">
               <strong className="text-sm text-[#334039]">Quy trình của doanh nghiệp</strong>
@@ -1872,8 +1877,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         </div>
       </MaintenanceShell>
 
-      <Dialog open={masterMatrixOpen} onOpenChange={setMasterMatrixOpen}>
-        <DialogContent className="flex h-[min(760px,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-[1500px] flex-col">
+      {masterMatrixOpen ? (
+        <div className="mx-auto flex min-h-[720px] w-full max-w-[1500px] flex-col rounded-2xl border border-[#DCE5DB] bg-white p-6 shadow-sm">
           <DialogHeader>
             <DialogTitle>Ma trận Master</DialogTitle>
             <DialogDescription>
@@ -1995,8 +2000,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
               Đóng
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : null}
 
       <Dialog open={masterBoardOpen} onOpenChange={setMasterBoardOpen}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">
