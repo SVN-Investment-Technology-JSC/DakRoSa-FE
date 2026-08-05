@@ -68,6 +68,10 @@ export interface WorkflowMasterBoardDefinition {
   name: string;
   status: 'draft' | 'published' | 'archived';
   requiredVariableKeys: string[];
+  requiredVariables?: Array<{
+    key: string;
+    assignmentRoles: WorkflowAssignmentRole[];
+  }>;
 }
 
 export interface WorkflowGlobalMasterBoard {

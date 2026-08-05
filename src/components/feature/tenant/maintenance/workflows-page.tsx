@@ -24,7 +24,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Popconfirm } from 'antd';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Protected } from '@/components/protected';
 import { Badge } from '@/components/ui/badge';
@@ -64,7 +64,6 @@ import type {
   WorkflowAssigneeType,
   WorkflowDefinition,
   WorkflowFormField,
-  WorkflowMasterBoardDefinition,
   WorkflowNode,
   WorkflowNodeType,
   WorkflowRoleMapping,
@@ -72,6 +71,14 @@ import type {
   WorkflowTransition,
   WorkflowValidation,
 } from '@/types/workflow';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import {
+  fetchWorkflowMasterMatrix,
+  masterMatrixCacheInvalidated,
+  masterMatrixDraftReset,
+  masterMatrixRoleVariablesChanged,
+  saveWorkflowMasterMatrix,
+} from '@/store/workflow-master-matrix.slice';
 import {
   WORKFLOW_NODE_DRAG_TYPE,
   WorkflowFlowCanvas,
@@ -376,7 +383,69 @@ function newNode(type: WorkflowNodeType, index: number): WorkflowNode {
   };
 }
 
+function normalizeWorkflowNode(node: WorkflowNode): WorkflowNode {
+  const currentAssignees = Array.isArray(node.assignees) ? node.assignees : [];
+  if (currentAssignees.length > 0) {
+    return { ...node, assignees: currentAssignees };
+  }
+
+  // Quy trình cũ có thể lưu executors/observers (hoặc tên cũ doers/reporters)
+  // trong config. Chuyển chúng sang hợp đồng assignees hiện tại để vẫn có thể
+  // lưu/kiểm tra bình thường.
+  const config = node.config ?? {};
+  const legacyVariables = (...keys: string[]) => {
+    return [
+      ...new Set(
+        keys.flatMap((key) => {
+          const value = config[key];
+          return Array.isArray(value)
+            ? value.filter((item): item is string => typeof item === 'string')
+            : [];
+        }),
+      ),
+    ];
+  };
+  const legacyAssignees: WorkflowAssignee[] = [
+    ...legacyVariables('executors', 'doers').map((assigneeVariableKey) => ({
+      type: 'ROLE' as WorkflowAssigneeType,
+      assigneeVariableKey,
+      assignmentRole: 'EXECUTOR' as const,
+      strategy: 'ANY' as const,
+      config: {},
+    })),
+    ...legacyVariables('observers', 'reporters').map((assigneeVariableKey) => ({
+      type: 'ROLE' as WorkflowAssigneeType,
+      assigneeVariableKey,
+      assignmentRole: 'OBSERVER' as const,
+      strategy: 'ANY' as const,
+      config: {},
+    })),
+  ];
+
+  return {
+    ...node,
+    config,
+    assignees:
+      legacyAssignees.length > 0 || node.type !== 'HUMAN_TASK'
+        ? legacyAssignees
+        : [{ type: 'CREATOR', strategy: 'ANY', config: {} }],
+  };
+}
+
+function normalizeWorkflowNodes(nodes: WorkflowNode[]): WorkflowNode[] {
+  return nodes.map(normalizeWorkflowNode);
+}
+
+function toMasterBoardMappingInput(mapping: WorkflowRoleMapping) {
+  return {
+    variableKey: mapping.variableKey.trim(),
+    targetType: mapping.targetType,
+    targetId: mapping.targetId,
+  };
+}
+
 export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
+  const dispatch = useAppDispatch();
   const { user } = useAuth();
   const canManage = hasPermission(user, PERMISSIONS.WORKFLOW_DEFINITION_MANAGE);
   const canPublish = hasPermission(user, PERMISSIONS.WORKFLOW_DEFINITION_PUBLISH);
@@ -395,15 +464,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [masterBoardOpen, setMasterBoardOpen] = useState(false);
   const [masterMatrixOpen, setMasterMatrixOpen] = useState(false);
-  const [masterMatrixLoading, setMasterMatrixLoading] = useState(false);
-  const [masterMatrixBusyCell, setMasterMatrixBusyCell] = useState('');
-  const [masterMatrixDefinitions, setMasterMatrixDefinitions] = useState<
-    WorkflowMasterBoardDefinition[]
-  >([]);
-  const [masterMatrixMappings, setMasterMatrixMappings] = useState<
-    WorkflowRoleMapping[]
-  >([]);
-  const [masterBoardLoading, setMasterBoardLoading] = useState(false);
+  const masterMatrix = useAppSelector((state) => state.workflowMasterMatrix);
+  const masterBoardLoading = false;
   const [masterBoardSaving, setMasterBoardSaving] = useState(false);
   const [masterBoardMappings, setMasterBoardMappings] = useState<
     WorkflowRoleMapping[]
@@ -421,7 +483,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   });
   const hydrate = useCallback((definition: WorkflowDefinition) => {
     setSelected(definition);
-    const graphNodes = definition.graph?.nodes ?? [];
+    const graphNodes = normalizeWorkflowNodes(definition.graph?.nodes ?? []);
     setNodes(graphNodes);
     setTransitions(normalizeTransitions(graphNodes, definition.graph?.transitions ?? []));
     setSelectedNodeKey(graphNodes[0]?.key ?? '');
@@ -529,92 +591,22 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     }
   };
 
-  const openMasterBoard = async () => {
-    if (!selected) return;
-    setMasterBoardOpen(true);
-    setMasterBoardLoading(true);
-    try {
-      const board = await workflowApi.getMasterBoard(selected.id);
-      setMasterBoardMappings(board.mappings);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể tải Master Board.');
-    } finally {
-      setMasterBoardLoading(false);
-    }
-  };
-
   const openMasterMatrix = async () => {
     setMasterMatrixOpen(true);
-    setMasterMatrixLoading(true);
-    try {
-      const board = await workflowApi.getGlobalMasterBoard();
-      setMasterMatrixDefinitions(board.definitions);
-      setMasterMatrixMappings(board.mappings);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Không thể tải Ma trận Master.',
-      );
-    } finally {
-      setMasterMatrixLoading(false);
+    const result = await dispatch(fetchWorkflowMasterMatrix());
+    if (fetchWorkflowMasterMatrix.rejected.match(result) && !result.meta.condition) {
+      toast.error(result.error.message ?? 'Không thể tải Ma trận Master.');
     }
   };
 
-  const updateMasterMatrixRoleCell = async (
-    definitionId: string,
-    variableKey: string,
-    roleId: string,
-    checked: boolean,
-  ) => {
-    const previous = masterMatrixMappings;
-    const mappingExists = previous.some(
-      (mapping) =>
-        mapping.definitionId === definitionId &&
-        mapping.variableKey === variableKey &&
-        mapping.targetType === 'ROLE' &&
-        mapping.targetId === roleId,
-    );
-    if (checked === mappingExists) return;
-    const nextDefinitionMappings = previous
-      .filter((mapping) => mapping.definitionId === definitionId)
-      .filter(
-        (mapping) =>
-          !(
-            mapping.variableKey === variableKey &&
-            mapping.targetType === 'ROLE' &&
-            mapping.targetId === roleId
-          ),
-      );
-    if (checked) {
-      nextDefinitionMappings.push({
-        definitionId,
-        variableKey,
-        targetType: 'ROLE',
-        targetId: roleId,
-      });
+  const saveMasterMatrix = async () => {
+    if (!masterMatrix.dirtyDefinitionIds.length) return;
+    const result = await dispatch(saveWorkflowMasterMatrix());
+    if (saveWorkflowMasterMatrix.fulfilled.match(result)) {
+      toast.success('Đã lưu các thay đổi của Ma trận Master.');
+      return;
     }
-    const cellKey = `${definitionId}:${variableKey}:${roleId}`;
-    setMasterMatrixBusyCell(cellKey);
-    setMasterMatrixMappings([
-      ...previous.filter((mapping) => mapping.definitionId !== definitionId),
-      ...nextDefinitionMappings,
-    ]);
-    try {
-      const board = await workflowApi.saveMasterBoard(
-        definitionId,
-        nextDefinitionMappings,
-      );
-      setMasterMatrixMappings((current) => [
-        ...current.filter((mapping) => mapping.definitionId !== definitionId),
-        ...board.mappings,
-      ]);
-    } catch (error) {
-      setMasterMatrixMappings(previous);
-      toast.error(
-        error instanceof Error ? error.message : 'Không thể lưu ô Ma trận Master.',
-      );
-    } finally {
-      setMasterMatrixBusyCell('');
-    }
+    toast.error(result.error.message ?? 'Không thể lưu Ma trận Master.');
   };
 
   const addMasterBoardMapping = () => {
@@ -647,10 +639,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
 
   const saveMasterBoard = async () => {
     if (!selected) return;
-    const normalized = masterBoardMappings.map((mapping) => ({
-      ...mapping,
-      variableKey: mapping.variableKey.trim(),
-    }));
+    const normalized = masterBoardMappings.map(toMasterBoardMappingInput);
     if (normalized.some((mapping) => !mapping.variableKey || !mapping.targetId)) {
       toast.error('Mỗi mapping cần có tên biến và đối tượng nhận việc.');
       return;
@@ -834,7 +823,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     setSaving(true);
     try {
       const saved = await workflowApi.saveDraft(selected.id, {
-        nodes: nodes.map((node) => ({
+        nodes: normalizeWorkflowNodes(nodes).map((node) => ({
           key: node.key,
           type: node.type,
           name: node.name,
@@ -845,6 +834,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             type: rule.type,
             subjectId: rule.subjectId || undefined,
             fieldKey: rule.fieldKey || undefined,
+            assigneeVariableKey: rule.assigneeVariableKey || undefined,
+            assignmentRole: rule.assignmentRole,
             strategy: rule.strategy,
             quorum: rule.quorum || undefined,
             config: rule.config,
@@ -861,6 +852,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         changelog: 'Cập nhật từ trình thiết kế trực quan.',
       });
       hydrate(saved);
+      dispatch(masterMatrixCacheInvalidated());
       await load(saved.id);
       toast.success('Đã lưu phiên bản nháp.');
       return saved;
@@ -1880,34 +1872,42 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       {masterMatrixOpen ? (
         <div className="mx-auto flex min-h-[720px] w-full max-w-[1500px] flex-col rounded-2xl border border-[#DCE5DB] bg-white p-6 shadow-sm">
           <div className="mb-5">
-            <h2 className="text-lg font-bold text-[#2A342E]">Ma trận Master</h2>
-            <p className="mt-1 text-sm text-[#6D786F]">
-              Gán biến người nhận của từng quy trình cho một hoặc nhiều vai trò.
-              Một ô được chọn nghĩa là vai trò đó nhận việc khi node dùng biến tương ứng.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-[#2A342E]">Ma trận Master</h2>
+                <p className="mt-1 text-sm text-[#6D786F]">
+                  Mỗi ô chỉ hiển thị các biến tác nhân đã khai báo ở Người thực hiện hoặc Người quan sát của quy trình đó.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-[#617064]">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800">Biến đã gán</span>
+                <span>Chọn ô để cập nhật</span>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-[#7A857D]">Thay đổi được lưu tạm trên giao diện và chỉ gửi đi khi bấm Lưu thay đổi.</p>
           </div>
           <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-[#DCE5DB]">
-            {masterMatrixLoading ? (
+            {masterMatrix.status === 'loading' ? (
               <div className="p-10 text-center text-sm text-[#758078]">
                 Đang tải Ma trận Master…
               </div>
             ) : null}
-            {!masterMatrixLoading && !masterMatrixDefinitions.length ? (
+            {masterMatrix.status !== 'loading' && !masterMatrix.definitions.length ? (
               <div className="p-10 text-center text-sm text-[#758078]">
                 Chưa có quy trình đang hoạt động.
               </div>
             ) : null}
-            {!masterMatrixLoading && masterMatrixDefinitions.length ? (
-              <table className="w-full border-collapse text-left text-xs">
+            {masterMatrix.status !== 'loading' && masterMatrix.definitions.length ? (
+              <table className="min-w-[980px] w-full table-fixed border-collapse text-left text-xs">
                 <thead className="sticky top-0 z-20 bg-[#F0F5F1] text-[#46534B]">
                   <tr>
-                    <th className="sticky left-0 z-30 min-w-56 border-r border-b border-[#DCE5DB] bg-[#F0F5F1] px-3 py-3 font-bold">
-                      Quy trình / biến
+                    <th className="sticky left-0 z-30 w-56 border-r border-b border-[#DCE5DB] bg-[#F0F5F1] px-3 py-3 font-bold">
+                      Quy trình
                     </th>
                     {roles.map((role) => (
                       <th
                         key={role.id}
-                        className="min-w-44 border-r border-b border-[#DCE5DB] px-3 py-3 text-center font-bold"
+                        className="w-56 border-r border-b border-[#DCE5DB] px-3 py-3 text-center font-bold"
                       >
                         <div>{role.code}</div>
                         <div className="mt-1 font-normal text-[#778178]">{role.name}</div>
@@ -1916,86 +1916,106 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {masterMatrixDefinitions.map((definition) => {
-                    const variableKeys = [
-                      ...new Set([
-                        ...definition.requiredVariableKeys,
-                        ...masterMatrixMappings
-                          .filter((mapping) => mapping.definitionId === definition.id)
-                          .map((mapping) => mapping.variableKey),
-                      ]),
-                    ].sort();
+                  {masterMatrix.definitions.map((definition) => {
+                    const variableOptions = (
+                      definition.requiredVariables?.length
+                        ? definition.requiredVariables
+                        : definition.requiredVariableKeys.map((key) => ({
+                            key,
+                            assignmentRoles: [],
+                          }))
+                    )
+                      .map(({ key, assignmentRoles }) => ({
+                        value: key,
+                        label: assignmentRoles.length
+                          ? `Biến ${key} · ${assignmentRoles
+                              .map((role) =>
+                                role === 'EXECUTOR' ? 'Thực hiện' : 'Quan sát',
+                              )
+                              .join(', ')}`
+                          : `Biến ${key}`,
+                      }))
+                      .sort((left, right) => left.value.localeCompare(right.value));
+                    const variableKeys = variableOptions.map((option) => option.value);
                     return (
-                      <Fragment key={definition.id}>
-                        <tr key={`${definition.id}-title`} className="bg-[#F8FAF7]">
-                          <td
-                            colSpan={roles.length + 1}
-                            className="border-b border-[#DCE5DB] px-3 py-2 font-bold text-[#354139]"
-                          >
-                            {definition.name}{' '}
-                            <span className="ml-1 font-normal text-[#78837B]">
-                              ({definition.key})
-                            </span>
-                          </td>
-                        </tr>
-                        {variableKeys.length ? (
-                          variableKeys.map((variableKey) => (
-                            <tr key={`${definition.id}-${variableKey}`}>
-                              <td className="sticky left-0 z-10 border-r border-b border-[#DCE5DB] bg-white px-3 py-2 font-medium text-[#4B584F]">
-                                {variableKey}
-                              </td>
-                              {roles.map((role) => {
-                                const checked = masterMatrixMappings.some(
-                                  (mapping) =>
-                                    mapping.definitionId === definition.id &&
-                                    mapping.variableKey === variableKey &&
-                                    mapping.targetType === 'ROLE' &&
-                                    mapping.targetId === role.id,
-                                );
-                                const cellKey = `${definition.id}:${variableKey}:${role.id}`;
-                                return (
-                                  <td
-                                    key={role.id}
-                                    className="border-r border-b border-[#DCE5DB] px-3 py-2 text-center"
-                                  >
-                                    <Checkbox
-                                      checked={checked}
-                                      disabled={
-                                        !canManage || masterMatrixBusyCell === cellKey
-                                      }
-                                      aria-label={`${definition.name}, ${variableKey}, ${role.name}`}
-                                      onCheckedChange={(value) =>
-                                        void updateMasterMatrixRoleCell(
-                                          definition.id,
-                                          variableKey,
-                                          role.id,
-                                          Boolean(value),
-                                        )
-                                      }
-                                    />
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))
-                        ) : (
-                          <tr key={`${definition.id}-empty`}>
-                            <td
-                              colSpan={roles.length + 1}
-                              className="border-b border-[#DCE5DB] px-3 py-3 text-[#7D8880]"
-                            >
-                              Chưa có node nào sử dụng biến Master Board.
+                      <tr key={definition.id} className="bg-white hover:bg-[#F8FAF7]">
+                        <td className="sticky left-0 z-10 border-r border-b border-[#DCE5DB] bg-white px-3 py-3 font-medium text-[#354139]">
+                          <div>{definition.name}</div>
+                          <div className="mt-1 font-normal text-[#78837B]">{definition.key}</div>
+                          {!variableKeys.length ? (
+                            <div className="mt-1 font-normal text-amber-700">
+                              Chưa khai báo biến tác nhân.
+                            </div>
+                          ) : null}
+                        </td>
+                        {roles.map((role) => {
+                          const selectedVariableKeys = masterMatrix.draftMappings
+                            .filter(
+                              (mapping) =>
+                                mapping.definitionId === definition.id &&
+                                mapping.targetType === 'ROLE' &&
+                                mapping.targetId === role.id,
+                            )
+                            .map((mapping) => mapping.variableKey)
+                            .filter((variableKey) => variableKeys.includes(variableKey));
+                          return (
+                            <td key={role.id} className="border-r border-b border-[#DCE5DB] p-2">
+                              {!variableKeys.length ? (
+                                <div className="flex h-11 items-center rounded-lg border border-dashed border-[#DCE5DB] px-3 text-xs text-[#A0AAA2]">
+                                  —
+                                </div>
+                              ) : (
+                              <MultiSelectVariables
+                                value={selectedVariableKeys}
+                                options={variableOptions}
+                                compact
+                                disabled={!canManage || masterMatrix.saving}
+                                placeholder="Chọn biến…"
+                                onChange={(nextVariableKeys) =>
+                                  dispatch(
+                                    masterMatrixRoleVariablesChanged({
+                                      definitionId: definition.id,
+                                      roleId: role.id,
+                                      variableKeys: nextVariableKeys,
+                                    }),
+                                  )
+                                }
+                              />
+                              )}
                             </td>
-                          </tr>
-                        )}
-                      </Fragment>
+                          );
+                        })}
+                      </tr>
                     );
                   })}
                 </tbody>
               </table>
             ) : null}
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#6D786F]">
+              {masterMatrix.dirtyDefinitionIds.length
+                ? `${masterMatrix.dirtyDefinitionIds.length} quy trình có thay đổi chưa lưu.`
+                : 'Không có thay đổi chưa lưu.'}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!masterMatrix.dirtyDefinitionIds.length || masterMatrix.saving}
+                onClick={() => dispatch(masterMatrixDraftReset())}
+              >
+                Hủy thay đổi
+              </Button>
+              <Button
+                type="button"
+                disabled={!canManage || !masterMatrix.dirtyDefinitionIds.length || masterMatrix.saving}
+                onClick={() => void saveMasterMatrix()}
+              >
+                <Save />
+                {masterMatrix.saving ? 'Đang lưu…' : 'Lưu thay đổi'}
+              </Button>
+            </div>
             <Button type="button" variant="outline" onClick={() => setMasterMatrixOpen(false)}>
               Đóng
             </Button>
