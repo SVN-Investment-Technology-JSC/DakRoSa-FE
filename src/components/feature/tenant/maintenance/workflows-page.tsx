@@ -24,7 +24,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Popconfirm } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Protected } from '@/components/protected';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +63,7 @@ import type {
   WorkflowAssigneeType,
   WorkflowDefinition,
   WorkflowFormField,
+  WorkflowMasterBoardDefinition,
   WorkflowNode,
   WorkflowNodeType,
   WorkflowRoleMapping,
@@ -392,6 +393,15 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [masterBoardOpen, setMasterBoardOpen] = useState(false);
+  const [masterMatrixOpen, setMasterMatrixOpen] = useState(false);
+  const [masterMatrixLoading, setMasterMatrixLoading] = useState(false);
+  const [masterMatrixBusyCell, setMasterMatrixBusyCell] = useState('');
+  const [masterMatrixDefinitions, setMasterMatrixDefinitions] = useState<
+    WorkflowMasterBoardDefinition[]
+  >([]);
+  const [masterMatrixMappings, setMasterMatrixMappings] = useState<
+    WorkflowRoleMapping[]
+  >([]);
   const [masterBoardLoading, setMasterBoardLoading] = useState(false);
   const [masterBoardSaving, setMasterBoardSaving] = useState(false);
   const [masterBoardMappings, setMasterBoardMappings] = useState<
@@ -529,6 +539,80 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải Master Board.');
     } finally {
       setMasterBoardLoading(false);
+    }
+  };
+
+  const openMasterMatrix = async () => {
+    setMasterMatrixOpen(true);
+    setMasterMatrixLoading(true);
+    try {
+      const board = await workflowApi.getGlobalMasterBoard();
+      setMasterMatrixDefinitions(board.definitions);
+      setMasterMatrixMappings(board.mappings);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Không thể tải Ma trận Master.',
+      );
+    } finally {
+      setMasterMatrixLoading(false);
+    }
+  };
+
+  const updateMasterMatrixRoleCell = async (
+    definitionId: string,
+    variableKey: string,
+    roleId: string,
+    checked: boolean,
+  ) => {
+    const previous = masterMatrixMappings;
+    const mappingExists = previous.some(
+      (mapping) =>
+        mapping.definitionId === definitionId &&
+        mapping.variableKey === variableKey &&
+        mapping.targetType === 'ROLE' &&
+        mapping.targetId === roleId,
+    );
+    if (checked === mappingExists) return;
+    const nextDefinitionMappings = previous
+      .filter((mapping) => mapping.definitionId === definitionId)
+      .filter(
+        (mapping) =>
+          !(
+            mapping.variableKey === variableKey &&
+            mapping.targetType === 'ROLE' &&
+            mapping.targetId === roleId
+          ),
+      );
+    if (checked) {
+      nextDefinitionMappings.push({
+        definitionId,
+        variableKey,
+        targetType: 'ROLE',
+        targetId: roleId,
+      });
+    }
+    const cellKey = `${definitionId}:${variableKey}:${roleId}`;
+    setMasterMatrixBusyCell(cellKey);
+    setMasterMatrixMappings([
+      ...previous.filter((mapping) => mapping.definitionId !== definitionId),
+      ...nextDefinitionMappings,
+    ]);
+    try {
+      const board = await workflowApi.saveMasterBoard(
+        definitionId,
+        nextDefinitionMappings,
+      );
+      setMasterMatrixMappings((current) => [
+        ...current.filter((mapping) => mapping.definitionId !== definitionId),
+        ...board.mappings,
+      ]);
+    } catch (error) {
+      setMasterMatrixMappings(previous);
+      toast.error(
+        error instanceof Error ? error.message : 'Không thể lưu ô Ma trận Master.',
+      );
+    } finally {
+      setMasterMatrixBusyCell('');
     }
   };
 
@@ -930,6 +1014,16 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
           <div className="flex flex-wrap gap-2">
+            {canManage ? (
+              <Button
+                variant="outline"
+                className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                onClick={() => void openMasterMatrix()}
+              >
+                <UserRoundCheck />
+                Ma trận Master
+              </Button>
+            ) : null}
             {selected && canManage ? (
               <Button
                 variant="outline"
@@ -937,7 +1031,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                 onClick={() => void openMasterBoard()}
               >
                 <UserRoundCheck />
-                Master Board
+                Chi tiết Master Board
               </Button>
             ) : null}
             <Button
@@ -1713,6 +1807,132 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </aside>
         </div>
       </MaintenanceShell>
+
+      <Dialog open={masterMatrixOpen} onOpenChange={setMasterMatrixOpen}>
+        <DialogContent className="flex h-[min(760px,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-[1500px] flex-col">
+          <DialogHeader>
+            <DialogTitle>Ma trận Master</DialogTitle>
+            <DialogDescription>
+              Gán biến người nhận của từng quy trình cho một hoặc nhiều vai trò.
+              Một ô được chọn nghĩa là vai trò đó nhận việc khi node dùng biến tương ứng.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-[#DCE5DB]">
+            {masterMatrixLoading ? (
+              <div className="p-10 text-center text-sm text-[#758078]">
+                Đang tải Ma trận Master…
+              </div>
+            ) : null}
+            {!masterMatrixLoading && !masterMatrixDefinitions.length ? (
+              <div className="p-10 text-center text-sm text-[#758078]">
+                Chưa có quy trình đang hoạt động.
+              </div>
+            ) : null}
+            {!masterMatrixLoading && masterMatrixDefinitions.length ? (
+              <table className="w-full border-collapse text-left text-xs">
+                <thead className="sticky top-0 z-20 bg-[#F0F5F1] text-[#46534B]">
+                  <tr>
+                    <th className="sticky left-0 z-30 min-w-56 border-r border-b border-[#DCE5DB] bg-[#F0F5F1] px-3 py-3 font-bold">
+                      Quy trình / biến
+                    </th>
+                    {roles.map((role) => (
+                      <th
+                        key={role.id}
+                        className="min-w-44 border-r border-b border-[#DCE5DB] px-3 py-3 text-center font-bold"
+                      >
+                        <div>{role.code}</div>
+                        <div className="mt-1 font-normal text-[#778178]">{role.name}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {masterMatrixDefinitions.map((definition) => {
+                    const variableKeys = [
+                      ...new Set([
+                        ...definition.requiredVariableKeys,
+                        ...masterMatrixMappings
+                          .filter((mapping) => mapping.definitionId === definition.id)
+                          .map((mapping) => mapping.variableKey),
+                      ]),
+                    ].sort();
+                    return (
+                      <Fragment key={definition.id}>
+                        <tr key={`${definition.id}-title`} className="bg-[#F8FAF7]">
+                          <td
+                            colSpan={roles.length + 1}
+                            className="border-b border-[#DCE5DB] px-3 py-2 font-bold text-[#354139]"
+                          >
+                            {definition.name}{' '}
+                            <span className="ml-1 font-normal text-[#78837B]">
+                              ({definition.key})
+                            </span>
+                          </td>
+                        </tr>
+                        {variableKeys.length ? (
+                          variableKeys.map((variableKey) => (
+                            <tr key={`${definition.id}-${variableKey}`}>
+                              <td className="sticky left-0 z-10 border-r border-b border-[#DCE5DB] bg-white px-3 py-2 font-medium text-[#4B584F]">
+                                {variableKey}
+                              </td>
+                              {roles.map((role) => {
+                                const checked = masterMatrixMappings.some(
+                                  (mapping) =>
+                                    mapping.definitionId === definition.id &&
+                                    mapping.variableKey === variableKey &&
+                                    mapping.targetType === 'ROLE' &&
+                                    mapping.targetId === role.id,
+                                );
+                                const cellKey = `${definition.id}:${variableKey}:${role.id}`;
+                                return (
+                                  <td
+                                    key={role.id}
+                                    className="border-r border-b border-[#DCE5DB] px-3 py-2 text-center"
+                                  >
+                                    <Checkbox
+                                      checked={checked}
+                                      disabled={
+                                        !canManage || masterMatrixBusyCell === cellKey
+                                      }
+                                      aria-label={`${definition.name}, ${variableKey}, ${role.name}`}
+                                      onCheckedChange={(value) =>
+                                        void updateMasterMatrixRoleCell(
+                                          definition.id,
+                                          variableKey,
+                                          role.id,
+                                          Boolean(value),
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))
+                        ) : (
+                          <tr key={`${definition.id}-empty`}>
+                            <td
+                              colSpan={roles.length + 1}
+                              className="border-b border-[#DCE5DB] px-3 py-3 text-[#7D8880]"
+                            >
+                              Chưa có node nào sử dụng biến Master Board.
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMasterMatrixOpen(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={masterBoardOpen} onOpenChange={setMasterBoardOpen}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">

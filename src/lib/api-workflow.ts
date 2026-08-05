@@ -2,6 +2,7 @@ import { apiRequest } from './api';
 import type {
   WorkflowDefinition,
   WorkflowDraftInput,
+  WorkflowGlobalMasterBoard,
   WorkflowInstance,
   WorkflowRoleMapping,
   WorkflowRoleMappingBoard,
@@ -68,6 +69,8 @@ export const workflowApi = {
         body: JSON.stringify({ mappings }),
       },
     ),
+  getGlobalMasterBoard: () =>
+    apiRequest<WorkflowGlobalMasterBoard>('/workflow/master-board'),
   getInstance: (id: string) =>
     apiRequest<WorkflowInstance>(`/workflow/instances/${id}`),
   getMyWorkItems: () => apiRequest('/workflow/work-items/mine'),

@@ -59,6 +59,19 @@ export interface WorkflowRoleMappingBoard {
   mappings: WorkflowRoleMapping[];
 }
 
+export interface WorkflowMasterBoardDefinition {
+  id: string;
+  key: string;
+  name: string;
+  status: 'draft' | 'published' | 'archived';
+  requiredVariableKeys: string[];
+}
+
+export interface WorkflowGlobalMasterBoard {
+  definitions: WorkflowMasterBoardDefinition[];
+  mappings: WorkflowRoleMapping[];
+}
+
 export interface WorkflowNode {
   id?: string;
   versionId?: string;
