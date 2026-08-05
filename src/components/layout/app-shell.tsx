@@ -3,7 +3,6 @@
 
 import {
   Activity,
-  Bell,
   BriefcaseBusiness,
   Building2,
   CalendarClock,
@@ -31,6 +30,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   NavigationIcon,
   NavigationItem,
+  PERMISSIONS,
   navigationConfig,
   tenantPath,
 } from '@/lib/navigation';
@@ -41,6 +41,7 @@ import { Button } from '@/components/ui/button';
 import { BrandMark } from '@/components/auth/brand-mark';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { NotificationCenter } from './notification-center';
 
 const icons: Record<NavigationIcon, React.ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
@@ -121,26 +122,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [switchError, setSwitchError] = useState('');
   const [pendingTenantSlug, setPendingTenantSlug] = useState<string | null>(null);
   const routeTenantSlug = tenantSlugFromPath(pathname);
+  const isModuleEnabled = (module?: string) =>
+    !module ||
+    user?.isPlatformAdmin ||
+    Boolean(user?.activeTenant.enabledModules.includes(module));
 
   const visibleItems = useMemo(
     () =>
-      navigationConfig.filter(
-        (item) =>
-          hasPermission(user, item.viewPermission) &&
-          (!item.module || user?.isPlatformAdmin || user?.activeTenant.enabledModules.includes(item.module)),
-      ),
+      navigationConfig.flatMap((item) => {
+        if (!hasPermission(user, item.viewPermission) || !isModuleEnabled(item.module)) {
+          return [];
+        }
+        const children = item.children?.filter((child) =>
+          isModuleEnabled(child.module),
+        );
+        if (item.children && !children?.length) return [];
+        return [{ ...item, children }];
+      }),
     [user],
   );
 
   const activeItem = navigationConfig.find((item) => matchesItemOrChild(pathname, item, user?.activeTenant.slug));
-  const activeChild = activeItem?.children?.find((child) =>
-    matchesNavigationItem(pathname, getHref(child.href, child.tenantAware, user?.activeTenant.slug)),
-  );
+  const activeChild = activeItem?.children
+    ? [...activeItem.children]
+        .sort((a, b) => b.href.length - a.href.length)
+        .find((child) =>
+          matchesNavigationItem(
+            pathname,
+            getHref(child.href, child.tenantAware, user?.activeTenant.slug),
+          ),
+        )
+    : undefined;
   const pageAllowed =
     !activeItem ||
     (hasPermission(user, activeItem.viewPermission) &&
-      (!activeItem.module || user?.isPlatformAdmin ||
-        user?.activeTenant.enabledModules.includes(activeItem.module)));
+      isModuleEnabled(activeItem.module) &&
+      (activeChild
+        ? isModuleEnabled(activeChild.module)
+        : !activeItem.children ||
+          activeItem.children.some((child) => isModuleEnabled(child.module))));
   const tenantMismatch =
     Boolean(routeTenantSlug) &&
     Boolean(user) &&
@@ -530,15 +550,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {activeChild?.label ?? activeItem?.label ?? 'Không gian doanh nghiệp'}
             </strong>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="relative grid size-10 place-items-center rounded-xl border border-[#DDE5DC] bg-white text-[#59615A] hover:bg-[#F0F5EE]"
-            aria-label="Thông báo"
-          >
-            <Bell size={19} />
-          </Button>
+          {hasPermission(user, PERMISSIONS.NOTIFICATIONS_VIEW) ? (
+            <NotificationCenter tenantSlug={user.activeTenant.slug} />
+          ) : null}
         </header>
         <main
           className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"

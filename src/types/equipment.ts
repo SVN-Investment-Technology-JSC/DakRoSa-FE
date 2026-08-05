@@ -1,5 +1,6 @@
 export interface Equipment {
   id: string;
+  siteId: string | null;
   parentId: string | null;
   code: string;
   name: string;
