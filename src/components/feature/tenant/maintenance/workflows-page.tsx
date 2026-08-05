@@ -65,6 +65,8 @@ import type {
   WorkflowFormField,
   WorkflowNode,
   WorkflowNodeType,
+  WorkflowRoleMapping,
+  WorkflowRoleMappingTargetType,
   WorkflowTransition,
   WorkflowValidation,
 } from '@/types/workflow';
@@ -389,6 +391,12 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [masterBoardOpen, setMasterBoardOpen] = useState(false);
+  const [masterBoardLoading, setMasterBoardLoading] = useState(false);
+  const [masterBoardSaving, setMasterBoardSaving] = useState(false);
+  const [masterBoardMappings, setMasterBoardMappings] = useState<
+    WorkflowRoleMapping[]
+  >([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [archiveBusyId, setArchiveBusyId] = useState('');
   const [definitionPendingDeletion, setDefinitionPendingDeletion] =
@@ -481,6 +489,18 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     }
     return [];
   }, [activeNode?.assignees, organization, roles, users]);
+  const masterBoardTargetOptions = useMemo(() => ({
+    USER: users
+      .filter((item) => item.isActive)
+      .map((item) => ({ id: item.id, label: item.displayName })),
+    ROLE: roles.map((item) => ({ id: item.id, label: item.name })),
+    ORGANIZATION_UNIT: organization.units
+      .filter((item) => item.isActive)
+      .map((item) => ({ id: item.id, label: `${item.code} · ${item.name}` })),
+    POSITION: organization.positions
+      .filter((item) => item.isActive)
+      .map((item) => ({ id: item.id, label: `${item.code} · ${item.name}` })),
+  }), [organization, roles, users]);
 
   const activeTransitions = useMemo(
     () => transitions.filter((transition) => transition.sourceKey === selectedNodeKey),
@@ -495,6 +515,77 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       toast.error(error instanceof Error ? error.message : 'Không thể mở quy trình.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openMasterBoard = async () => {
+    if (!selected) return;
+    setMasterBoardOpen(true);
+    setMasterBoardLoading(true);
+    try {
+      const board = await workflowApi.getMasterBoard(selected.id);
+      setMasterBoardMappings(board.mappings);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tải Master Board.');
+    } finally {
+      setMasterBoardLoading(false);
+    }
+  };
+
+  const addMasterBoardMapping = () => {
+    const targetType: WorkflowRoleMappingTargetType = roles.length ? 'ROLE' : 'USER';
+    const options = masterBoardTargetOptions[targetType];
+    if (!options.length) {
+      toast.error('Chưa có đối tượng phù hợp để tạo mapping.');
+      return;
+    }
+    setMasterBoardMappings((current) => [
+      ...current,
+      {
+        variableKey: `nguoi_xu_ly_${current.length + 1}`,
+        targetType,
+        targetId: options[0].id,
+      },
+    ]);
+  };
+
+  const updateMasterBoardMapping = (
+    index: number,
+    patch: Partial<WorkflowRoleMapping>,
+  ) => {
+    setMasterBoardMappings((current) =>
+      current.map((mapping, itemIndex) =>
+        itemIndex === index ? { ...mapping, ...patch } : mapping,
+      ),
+    );
+  };
+
+  const saveMasterBoard = async () => {
+    if (!selected) return;
+    const normalized = masterBoardMappings.map((mapping) => ({
+      ...mapping,
+      variableKey: mapping.variableKey.trim(),
+    }));
+    if (normalized.some((mapping) => !mapping.variableKey || !mapping.targetId)) {
+      toast.error('Mỗi mapping cần có tên biến và đối tượng nhận việc.');
+      return;
+    }
+    if (
+      new Set(normalized.map((mapping) => mapping.variableKey)).size !==
+      normalized.length
+    ) {
+      toast.error('Tên biến Master Board không được trùng nhau.');
+      return;
+    }
+    setMasterBoardSaving(true);
+    try {
+      const board = await workflowApi.saveMasterBoard(selected.id, normalized);
+      setMasterBoardMappings(board.mappings);
+      toast.success('Đã lưu Master Board.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể lưu Master Board.');
+    } finally {
+      setMasterBoardSaving(false);
     }
   };
 
@@ -839,6 +930,16 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
         description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
           <div className="flex flex-wrap gap-2">
+            {selected && canManage ? (
+              <Button
+                variant="outline"
+                className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                onClick={() => void openMasterBoard()}
+              >
+                <UserRoundCheck />
+                Master Board
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               className="border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white"
@@ -1105,10 +1206,78 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                   <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
                     <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                      Nguồn người nhận
+                      <Select
+                        value={
+                          activeNode.assignees[0]?.assigneeVariableKey
+                            ? 'MASTER_BOARD'
+                            : 'STATIC'
+                        }
+                        disabled={!canManage}
+                        onValueChange={(value) => {
+                          const currentRule = activeNode.assignees[0] ?? {
+                            type: 'CREATOR' as WorkflowAssigneeType,
+                            strategy: 'ANY' as const,
+                            config: {},
+                          };
+                          updateNode(activeNode.key, {
+                            assignees: [
+                              {
+                                ...currentRule,
+                                assigneeVariableKey:
+                                  value === 'MASTER_BOARD'
+                                    ? currentRule.assigneeVariableKey || 'nguoi_xu_ly'
+                                    : undefined,
+                              },
+                            ],
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="STATIC">Cấu hình trực tiếp</SelectItem>
+                          <SelectItem value="MASTER_BOARD">
+                            Master Board (biến quy trình)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                    {activeNode.assignees[0]?.assigneeVariableKey ? (
+                      <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                        Biến Master Board
+                        <Input
+                          value={activeNode.assignees[0].assigneeVariableKey}
+                          disabled={!canManage}
+                          list="workflow-master-board-variables"
+                          placeholder="Ví dụ: nguoi_xu_ly"
+                          onChange={(event) =>
+                            updateNode(activeNode.key, {
+                              assignees: [
+                                {
+                                  ...activeNode.assignees[0],
+                                  assigneeVariableKey: event.target.value,
+                                },
+                              ],
+                            })
+                          }
+                        />
+                        <datalist id="workflow-master-board-variables">
+                          {masterBoardMappings.map((mapping) => (
+                            <option key={mapping.variableKey} value={mapping.variableKey} />
+                          ))}
+                        </datalist>
+                        <span className="font-normal text-[#7C877F]">
+                          Người nhận sẽ lấy từ Master Board của mẫu quy trình này.
+                        </span>
+                      </Label>
+                    ) : null}
+                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Quy tắc người nhận
                       <Select
                         value={activeNode.assignees[0]?.type ?? 'CREATOR'}
-                        disabled={!canManage}
+                        disabled={!canManage || Boolean(activeNode.assignees[0]?.assigneeVariableKey)}
                         onValueChange={(value) => {
                           const type = value as WorkflowAssigneeType;
                           const rule: WorkflowAssignee = {
@@ -1135,7 +1304,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         </SelectContent>
                       </Select>
                     </Label>
-                    {activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
+                    {!activeNode.assignees[0]?.assigneeVariableKey &&
+                    activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Tên trường trên phiếu
                         <Select
@@ -1163,7 +1333,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         </Select>
                       </Label>
                     ) : null}
-                    {['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
+                    {!activeNode.assignees[0]?.assigneeVariableKey &&
+                    ['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
                       activeNode.assignees[0]?.type ?? '',
                     ) ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
@@ -1215,7 +1386,8 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         )}
                       </Label>
                     ) : null}
-                    {activeNode.assignees[0]?.type ===
+                    {!activeNode.assignees[0]?.assigneeVariableKey &&
+                    activeNode.assignees[0]?.type ===
                       'MANAGER_OF_REQUESTER' ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Chức danh quản lý dự phòng
@@ -1541,6 +1713,157 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </aside>
         </div>
       </MaintenanceShell>
+
+      <Dialog open={masterBoardOpen} onOpenChange={setMasterBoardOpen}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Master Board — người nhận việc</DialogTitle>
+            <DialogDescription>
+              Khai báo biến dùng chung cho mẫu quy trình này. Tại node Công việc,
+              chọn “Master Board” rồi nhập đúng tên biến để giao việc theo mapping.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[480px] space-y-3 overflow-y-auto py-2">
+            {masterBoardLoading ? (
+              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[#758078]">
+                Đang tải Master Board…
+              </div>
+            ) : null}
+            {!masterBoardLoading && !masterBoardMappings.length ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-[#758078]">
+                Chưa có mapping. Thêm biến, sau đó chọn đối tượng sẽ nhận việc.
+              </div>
+            ) : null}
+            {!masterBoardLoading
+              ? masterBoardMappings.map((mapping, index) => {
+                  const targetOptions = masterBoardTargetOptions[mapping.targetType];
+                  return (
+                    <div
+                      key={mapping.id ?? `${mapping.variableKey}-${index}`}
+                      className="grid gap-3 rounded-xl border border-[#DCE5DB] bg-[#F8FAF7] p-3 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)_auto] md:items-end"
+                    >
+                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                        Tên biến
+                        <Input
+                          value={mapping.variableKey}
+                          disabled={!canManage || masterBoardSaving}
+                          placeholder="Ví dụ: nguoi_xu_ly"
+                          onChange={(event) =>
+                            updateMasterBoardMapping(index, {
+                              variableKey: event.target.value,
+                            })
+                          }
+                        />
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                        Loại đối tượng
+                        <Select
+                          value={mapping.targetType}
+                          disabled={!canManage || masterBoardSaving}
+                          onValueChange={(value) => {
+                            const targetType = value as WorkflowRoleMappingTargetType;
+                            updateMasterBoardMapping(index, {
+                              targetType,
+                              targetId: masterBoardTargetOptions[targetType][0]?.id ?? '',
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent position="popper" align="start">
+                            <SelectItem value="USER">Người dùng</SelectItem>
+                            <SelectItem value="ROLE">Vai trò</SelectItem>
+                            <SelectItem value="POSITION">Chức danh</SelectItem>
+                            <SelectItem value="ORGANIZATION_UNIT">Đơn vị tổ chức</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                        Đối tượng nhận việc
+                        <Select
+                          value={mapping.targetId || '__none__'}
+                          disabled={
+                            !canManage || masterBoardSaving || !targetOptions.length
+                          }
+                          onValueChange={(targetId) =>
+                            updateMasterBoardMapping(index, {
+                              targetId: targetId === '__none__' ? '' : targetId,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue placeholder="Chọn đối tượng" />
+                          </SelectTrigger>
+                          <SelectContent position="popper" align="start">
+                            <SelectItem value="__none__">Chọn đối tượng</SelectItem>
+                            {targetOptions.map((option) => (
+                              <SelectItem key={option.id} value={option.id}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      {canManage ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          disabled={masterBoardSaving}
+                          onClick={() =>
+                            setMasterBoardMappings((current) =>
+                              current.filter((_, itemIndex) => itemIndex !== index),
+                            )
+                          }
+                          aria-label={`Xóa biến ${mapping.variableKey || index + 1}`}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })
+              : null}
+          </div>
+          <DialogFooter className="sm:justify-between">
+            {canManage ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={masterBoardLoading || masterBoardSaving}
+                onClick={addMasterBoardMapping}
+              >
+                <Plus />
+                Thêm biến
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={masterBoardSaving}
+                onClick={() => setMasterBoardOpen(false)}
+              >
+                Đóng
+              </Button>
+              {canManage ? (
+                <Button
+                  type="button"
+                  disabled={masterBoardLoading || masterBoardSaving}
+                  onClick={() => void saveMasterBoard()}
+                >
+                  <Save />
+                  Lưu Master Board
+                </Button>
+              ) : null}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl">

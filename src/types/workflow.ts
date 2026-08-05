@@ -34,7 +34,29 @@ export interface WorkflowAssignee {
   fieldKey?: string | null;
   strategy: 'ANY' | 'ALL' | 'QUORUM';
   quorum?: number | null;
+  assigneeVariableKey?: string | null;
   config: Record<string, unknown>;
+}
+
+export type WorkflowRoleMappingTargetType =
+  | 'USER'
+  | 'ROLE'
+  | 'POSITION'
+  | 'ORGANIZATION_UNIT';
+
+export interface WorkflowRoleMapping {
+  id?: string;
+  definitionId?: string;
+  variableKey: string;
+  targetType: WorkflowRoleMappingTargetType;
+  targetId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WorkflowRoleMappingBoard {
+  definitionId: string;
+  mappings: WorkflowRoleMapping[];
 }
 
 export interface WorkflowNode {
