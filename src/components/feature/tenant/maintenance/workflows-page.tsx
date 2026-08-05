@@ -1879,13 +1879,13 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
 
       {masterMatrixOpen ? (
         <div className="mx-auto flex min-h-[720px] w-full max-w-[1500px] flex-col rounded-2xl border border-[#DCE5DB] bg-white p-6 shadow-sm">
-          <DialogHeader>
-            <DialogTitle>Ma trận Master</DialogTitle>
-            <DialogDescription>
+          <div className="mb-5">
+            <h2 className="text-lg font-bold text-[#2A342E]">Ma trận Master</h2>
+            <p className="mt-1 text-sm text-[#6D786F]">
               Gán biến người nhận của từng quy trình cho một hoặc nhiều vai trò.
               Một ô được chọn nghĩa là vai trò đó nhận việc khi node dùng biến tương ứng.
-            </DialogDescription>
-          </DialogHeader>
+            </p>
+          </div>
           <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-[#DCE5DB]">
             {masterMatrixLoading ? (
               <div className="p-10 text-center text-sm text-[#758078]">
@@ -1995,11 +1995,11 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
               </table>
             ) : null}
           </div>
-          <DialogFooter>
+          <div className="mt-4 flex justify-end">
             <Button type="button" variant="outline" onClick={() => setMasterMatrixOpen(false)}>
               Đóng
             </Button>
-          </DialogFooter>
+          </div>
         </div>
       ) : null}
 
