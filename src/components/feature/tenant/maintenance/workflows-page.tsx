@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Copy,
   Diamond,
@@ -147,6 +148,24 @@ const assigneeLabels: Record<WorkflowAssigneeType, string> = {
   MANAGER_OF_REQUESTER: 'Quản lý người yêu cầu',
 };
 
+const workflowStepPermissionOptions = [
+  {
+    key: PERMISSIONS.WORK_ORDER_UPDATE,
+    label: 'Cập nhật phiếu công việc',
+    description: 'Ghi nhận và điều chỉnh thông tin phiếu.',
+  },
+  {
+    key: PERMISSIONS.WORK_ORDER_EXECUTE,
+    label: 'Thực hiện công việc',
+    description: 'Xử lý công việc bảo trì được giao.',
+  },
+  {
+    key: PERMISSIONS.WORK_ORDER_REVIEW,
+    label: 'Kiểm tra, nghiệm thu',
+    description: 'Kiểm tra kết quả và xác nhận hoàn thành.',
+  },
+] as const;
+
 function slugKey(value: string) {
   return value
     .normalize('NFD')
@@ -172,6 +191,33 @@ function durationInput(value: string, maximum?: number) {
   const parsed = Number.parseInt(value, 10);
   const normalized = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   return maximum === undefined ? normalized : Math.min(maximum, normalized);
+}
+
+function selectedStepPermissions(config: Record<string, unknown>): string[] {
+  const configured = config.requiredPermissions;
+  const values = Array.isArray(configured)
+    ? configured
+    : typeof config.requiredPermission === 'string'
+      ? [config.requiredPermission]
+      : [];
+  return [
+    ...new Set(
+      values.filter(
+        (permission): permission is string => typeof permission === 'string',
+      ),
+    ),
+  ];
+}
+
+function withSelectedStepPermissions(
+  config: Record<string, unknown>,
+  permissions: string[],
+): Record<string, unknown> {
+  const next = { ...config };
+  delete next.requiredPermission;
+  delete next.requiredPermissions;
+  if (!permissions.length) return next;
+  return { ...next, requiredPermissions: permissions };
 }
 
 function nodeKeyFromId(nodes: WorkflowNode[], id?: string) {
@@ -498,6 +544,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [permissionPanelExpanded, setPermissionPanelExpanded] = useState(false);
   const [masterBoardOpen, setMasterBoardOpen] = useState(false);
   const [masterMatrixOpen, setMasterMatrixOpen] = useState(false);
   const [workflowSearch, setWorkflowSearch] = useState('');
@@ -1812,25 +1859,96 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       Nhập 0 giờ và 0 phút nếu không đặt thời hạn.
                     </p>
                   </div>
-                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                    Quyền bắt buộc (tùy chọn)
-                    <Input
-                      value={String(
-                        activeNode.config.requiredPermission ?? '',
-                      )}
-                      disabled={!canManage}
-                      placeholder="Ví dụ: work_order.review"
-                      onChange={(event) =>
-                        updateNode(activeNode.key, {
-                          config: {
-                            ...activeNode.config,
-                            requiredPermission:
-                              event.target.value.trim() || undefined,
-                          },
-                        })
-                      }
-                    />
-                  </Label>
+                  {(() => {
+                    const selectedPermissions = selectedStepPermissions(
+                      activeNode.config,
+                    );
+                    const updateSelectedPermissions = (permissions: string[]) =>
+                      updateNode(activeNode.key, {
+                        config: withSelectedStepPermissions(
+                          activeNode.config,
+                          permissions,
+                        ),
+                      });
+
+                    return (
+                      <div className="rounded-xl border border-[#E2E8E1] bg-[#F9FBF8]">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-auto w-full justify-between rounded-xl px-3 py-2.5 text-left text-xs text-[#46534B] hover:bg-white"
+                          aria-expanded={permissionPanelExpanded}
+                          onClick={() =>
+                            setPermissionPanelExpanded((expanded) => !expanded)
+                          }
+                        >
+                          <span className="grid gap-0.5">
+                            <strong className="text-[12px]">
+                              Quyền được phép xử lý (tùy chọn)
+                            </strong>
+                            <span className="text-[10px] font-normal text-[#7B867E]">
+                              {selectedPermissions.length
+                                ? `Đã chọn ${selectedPermissions.length} quyền`
+                                : 'Không giới hạn quyền theo bước'}
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`transition-transform ${
+                              permissionPanelExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </Button>
+                        {permissionPanelExpanded ? (
+                          <div className="grid gap-2 border-t border-[#E2E8E1] p-3">
+                            <p className="text-[10px] text-[#7B867E]">
+                              Chọn một hoặc nhiều quyền. Người nhận chỉ cần có ít
+                              nhất một quyền đã chọn để xử lý bước này.
+                            </p>
+                            <div className="grid gap-2">
+                              {workflowStepPermissionOptions.map((option) => {
+                                const checked = selectedPermissions.includes(
+                                  option.key,
+                                );
+                                const toggle = () =>
+                                  updateSelectedPermissions(
+                                    checked
+                                      ? selectedPermissions.filter(
+                                          (permission) =>
+                                            permission !== option.key,
+                                        )
+                                      : [...selectedPermissions, option.key],
+                                  );
+                                return (
+                                  <div
+                                    key={option.key}
+                                    className="flex items-start gap-2 rounded-lg px-1 py-1 text-xs text-[#46534B] hover:bg-white"
+                                  >
+                                    <Checkbox
+                                      aria-label={option.label}
+                                      checked={checked}
+                                      disabled={!canManage}
+                                      onCheckedChange={toggle}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={!canManage}
+                                      className="grid min-w-0 flex-1 cursor-pointer gap-0.5 text-left leading-tight disabled:cursor-not-allowed"
+                                      onClick={toggle}
+                                    >
+                                      <strong>{option.label}</strong>
+                                      <span className="text-[10px] font-normal text-[#7B867E]">
+                                        {option.description}
+                                      </span>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                   <div className="grid gap-2 border-t border-[#E7ECE6] pt-3">
                     <div className="flex items-center justify-between">
                       <span>
