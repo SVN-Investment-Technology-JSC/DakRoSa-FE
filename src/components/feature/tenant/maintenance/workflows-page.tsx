@@ -157,6 +157,23 @@ function slugKey(value: string) {
     .slice(0, 70);
 }
 
+function durationParts(totalMinutes: unknown) {
+  const normalized =
+    typeof totalMinutes === 'number' && Number.isFinite(totalMinutes)
+      ? Math.max(0, Math.floor(totalMinutes))
+      : 1440;
+  return {
+    hours: Math.floor(normalized / 60),
+    minutes: normalized % 60,
+  };
+}
+
+function durationInput(value: string, maximum?: number) {
+  const parsed = Number.parseInt(value, 10);
+  const normalized = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  return maximum === undefined ? normalized : Math.min(maximum, normalized);
+}
+
 function nodeKeyFromId(nodes: WorkflowNode[], id?: string) {
   return nodes.find((node) => node.id === id)?.key;
 }
@@ -1041,7 +1058,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
       <MaintenanceShell
         tenantSlug={tenantSlug}
         title="Mẫu quy trình"
-        description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, SLA và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
+        description="Thiết kế quy trình có nhánh điều kiện, xử lý song song, làm lại, thời hạn xử lý và người nhận việc; mỗi lần công bố tạo một phiên bản bất biến."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1394,7 +1411,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
               <strong className="text-sm text-[#334039]">Thuộc tính node</strong>
             </span>
             <p className="mt-1 text-xs text-[#79837B]">
-              Người nhận, SLA và hành động chuyển bước
+              Người nhận, thời hạn xử lý và hành động chuyển bước
             </p>
           </header>
 
@@ -1438,7 +1455,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
 
               {activeNode.type === 'HUMAN_TASK' ? (
                 <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
+                  <strong className="text-xs text-[#46534B]">
+                    Giao việc & thời hạn xử lý
+                  </strong>
                   <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                     Người thực hiện
                     <MultiSelectVariables
@@ -1738,23 +1757,61 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       </Label>
                     ) : null}
                   </div>
-                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                    SLA (phút)
-                    <Input
-                      type="number"
-                      min={1}
-                      value={Number(activeNode.config.slaMinutes ?? 1440)}
-                      disabled={!canManage}
-                      onChange={(event) =>
-                        updateNode(activeNode.key, {
-                          config: {
-                            ...activeNode.config,
-                            slaMinutes: Number(event.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </Label>
+                  <div className="grid gap-1.5 text-[11px] font-bold text-[#68736B]">
+                    <span>Thời hạn xử lý</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="grid gap-1 text-[11px] font-medium text-[#68736B]">
+                        Giờ
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={durationParts(activeNode.config.slaMinutes).hours}
+                          disabled={!canManage}
+                          onChange={(event) => {
+                            const current = durationParts(
+                              activeNode.config.slaMinutes,
+                            );
+                            updateNode(activeNode.key, {
+                              config: {
+                                ...activeNode.config,
+                                slaMinutes:
+                                  durationInput(event.target.value) * 60 +
+                                  current.minutes,
+                              },
+                            });
+                          }}
+                        />
+                      </Label>
+                      <Label className="grid gap-1 text-[11px] font-medium text-[#68736B]">
+                        Phút
+                        <Input
+                          type="number"
+                          min={0}
+                          max={59}
+                          step={1}
+                          value={durationParts(activeNode.config.slaMinutes).minutes}
+                          disabled={!canManage}
+                          onChange={(event) => {
+                            const current = durationParts(
+                              activeNode.config.slaMinutes,
+                            );
+                            updateNode(activeNode.key, {
+                              config: {
+                                ...activeNode.config,
+                                slaMinutes:
+                                  current.hours * 60 +
+                                  durationInput(event.target.value, 59),
+                              },
+                            });
+                          }}
+                        />
+                      </Label>
+                    </div>
+                    <p className="font-normal text-[#7B867E]">
+                      Nhập 0 giờ và 0 phút nếu không đặt thời hạn.
+                    </p>
+                  </div>
                   <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                     Quyền bắt buộc (tùy chọn)
                     <Input
