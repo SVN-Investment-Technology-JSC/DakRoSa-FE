@@ -355,7 +355,7 @@ function WorkflowFlowCanvasInner({
 
   return (
     <div
-      className={`relative h-[min(62vh,610px)] min-h-[460px] w-full overflow-hidden rounded-2xl border bg-white shadow-inner transition-[border-color,box-shadow] ${
+      className={`relative h-[min(56vh,520px)] min-h-[400px] w-full overflow-hidden rounded-xl border bg-white shadow-inner transition-[border-color,box-shadow] ${
         dropActive
           ? 'border-emerald-500 ring-4 ring-emerald-100'
           : 'border-[#DCE4DA]'

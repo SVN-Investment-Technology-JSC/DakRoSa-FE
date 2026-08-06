@@ -71,6 +71,11 @@ export interface WorkflowMasterBoardDefinition {
   requiredVariables?: Array<{
     key: string;
     assignmentRoles: WorkflowAssignmentRole[];
+    nodeUsages: Array<{
+      nodeKey: string;
+      nodeName: string;
+      assignmentRole: WorkflowAssignmentRole;
+    }>;
   }>;
 }
 

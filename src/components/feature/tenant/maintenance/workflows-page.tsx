@@ -17,6 +17,7 @@ import {
   Plus,
   Route,
   Save,
+  Search,
   Send,
   Settings2,
   Trash2,
@@ -61,9 +62,11 @@ import type { Organization } from '@/types/tenancy';
 import type { UserRecord } from '@/types/user';
 import type {
   WorkflowAssignee,
+  WorkflowAssignmentRole,
   WorkflowAssigneeType,
   WorkflowDefinition,
   WorkflowFormField,
+  WorkflowMasterBoardDefinition,
   WorkflowNode,
   WorkflowNodeType,
   WorkflowRoleMapping,
@@ -444,6 +447,22 @@ function toMasterBoardMappingInput(mapping: WorkflowRoleMapping) {
   };
 }
 
+function getMasterMatrixVariables(definition: WorkflowMasterBoardDefinition) {
+  return (
+    definition.requiredVariables?.length
+      ? definition.requiredVariables
+      : definition.requiredVariableKeys.map((key) => ({
+        key,
+        assignmentRoles: [],
+        nodeUsages: [],
+      }))
+  ).slice().sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function assignmentRoleLabel(role: WorkflowAssignmentRole) {
+  return role === 'EXECUTOR' ? 'Thực hiện' : 'Quan sát';
+}
+
 export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
@@ -464,6 +483,10 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [masterBoardOpen, setMasterBoardOpen] = useState(false);
   const [masterMatrixOpen, setMasterMatrixOpen] = useState(false);
+  const [workflowSearch, setWorkflowSearch] = useState('');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [selectedMasterMatrixDefinitionId, setSelectedMasterMatrixDefinitionId] =
+    useState<string | null>(null);
   const masterMatrix = useAppSelector((state) => state.workflowMasterMatrix);
   const masterBoardLoading = false;
   const [masterBoardSaving, setMasterBoardSaving] = useState(false);
@@ -540,6 +563,13 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
     () => nodes.find((node) => node.key === selectedNodeKey) ?? null,
     [nodes, selectedNodeKey],
   );
+  const filteredDefinitions = useMemo(() => {
+    const query = workflowSearch.trim().toLocaleLowerCase('vi');
+    if (!query) return definitions;
+    return definitions.filter((definition) =>
+      `${definition.name} ${definition.key}`.toLocaleLowerCase('vi').includes(query),
+    );
+  }, [definitions, workflowSearch]);
   const assigneeSubjectOptions = useMemo(() => {
     const type = activeNode?.assignees[0]?.type;
     if (type === 'USER') {
@@ -594,6 +624,13 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
   const openMasterMatrix = async () => {
     setMasterMatrixOpen(true);
     const result = await dispatch(fetchWorkflowMasterMatrix());
+    if (fetchWorkflowMasterMatrix.fulfilled.match(result)) {
+      setSelectedMasterMatrixDefinitionId(result.payload.definitions[0]?.id ?? null);
+      return;
+    }
+    if (masterMatrix.definitions[0]) {
+      setSelectedMasterMatrixDefinitionId(masterMatrix.definitions[0].id);
+    }
     if (fetchWorkflowMasterMatrix.rejected.match(result) && !result.meta.condition) {
       toast.error(result.error.message ?? 'Không thể tải Ma trận Master.');
     }
@@ -680,9 +717,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           const position = positionByKey.get(node.key);
           return position
             ? {
-                ...node,
-                uiPosition: { x: position.x, y: position.y },
-              }
+              ...node,
+              uiPosition: { x: position.x, y: position.y },
+            }
             : node;
         }),
       );
@@ -1027,338 +1064,450 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
           </div>
         }
       >
-        <div className="mb-4 flex items-center gap-1 rounded-xl border border-[#DCE5DB] bg-white p-1 shadow-sm">
-          <Button
-            type="button"
-            variant="ghost"
-            className={!masterMatrixOpen ? 'bg-emerald-50 text-emerald-800' : ''}
-            onClick={() => setMasterMatrixOpen(false)}
-          >
-            Thiết kế quy trình
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className={masterMatrixOpen ? 'bg-emerald-50 text-emerald-800' : 'text-[#526057] hover:bg-emerald-50 hover:text-emerald-800'}
-            onClick={() => void openMasterMatrix()}
-          >
-            Ma trận Master
-          </Button>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className={!masterMatrixOpen ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white'}
+              onClick={() => setMasterMatrixOpen(false)}
+            >
+              Thiết kế quy trình
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className={masterMatrixOpen ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white'}
+              onClick={() => void openMasterMatrix()}
+            >
+              Ma trận Master
+            </Button>
+          </div>
+          {!masterMatrixOpen ? (
+            <span className="hidden text-xs text-slate-500 lg:block">
+              {validation ? (validation.valid ? 'Sơ đồ đã hợp lệ' : 'Cần kiểm tra lại sơ đồ') : 'Chưa kiểm tra thay đổi'}
+            </span>
+          ) : masterMatrix.dirtyDefinitionIds.length ? (
+            <span className="text-xs font-medium text-amber-700">Có thay đổi chưa lưu</span>
+          ) : null}
         </div>
-        <div className={masterMatrixOpen ? 'hidden' : 'grid min-h-[720px] overflow-hidden rounded-2xl border border-[#DCE5DB] bg-white shadow-sm xl:grid-cols-[250px_minmax(0,1fr)_340px]'}>
-          <aside className="border-b border-[#E4EAE3] bg-[#F8FAF7] xl:border-b-0 xl:border-r">
-            <div className="border-b border-[#E4EAE3] p-4">
-              <strong className="text-sm text-[#334039]">Quy trình của doanh nghiệp</strong>
-              <p className="mt-1 text-xs text-[#79837B]">{definitions.length} mẫu đã lưu</p>
-            </div>
-            <div className="max-h-[320px] space-y-1 overflow-y-auto p-2">
-              {definitions.map((definition) => (
-                <Button
-                  key={definition.id}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => void chooseDefinition(definition.id)}
-                  className={`h-auto w-full flex-col items-stretch rounded-xl p-3 text-left whitespace-normal transition ${selected?.id === definition.id
-                      ? 'bg-white shadow-sm ring-1 ring-emerald-200'
-                      : 'hover:bg-white/80'
-                    }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <Route size={16} className="shrink-0 text-emerald-700" />
-                    <strong className="truncate text-sm text-[#354139]">{definition.name}</strong>
-                  </span>
-                  <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[#7B857E]">
-                    <span className="truncate">{definition.key}</span>
+        {!masterMatrixOpen ? (
+          <section className="hidden">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-700 text-white">
+                <Route size={19} />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-sm font-semibold text-slate-900">
+                    {selected?.name ?? 'Chọn quy trình để bắt đầu'}
+                  </h2>
+                  {selected ? (
                     <Badge
                       variant="outline"
                       className={
-                        definition.status === 'published'
-                          ? 'border-emerald-200 text-emerald-700'
-                          : 'border-amber-200 text-amber-700'
+                        selected.status === 'published'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-amber-200 bg-amber-50 text-amber-700'
                       }
                     >
-                      {definition.status === 'published' ? 'Công bố' : 'Nháp'}
-                    </Badge>
-                  </span>
-                </Button>
-              ))}
-              {!loading && !definitions.length ? (
-                <div className="p-6 text-center text-sm text-[#758078]">
-                  Chưa có quy trình.
-                </div>
-              ) : null}
-            </div>
-
-            {selected ? (
-              <div className="border-t border-[#E4EAE3] p-3">
-                <Button variant="outline" className="w-full" onClick={() => void clone()}>
-                  <Copy />
-                  Nhân bản quy trình
-                </Button>
-                {canManage ? (
-                  <Popconfirm
-                    title="Lưu trữ quy trình?"
-                    description={`Quy trình “${selected.name}” sẽ được chuyển sang danh sách lưu trữ và có thể khôi phục.`}
-                    okText="Lưu trữ"
-                    cancelText="Hủy"
-                    okButtonProps={{ danger: true }}
-                    disabled={saving}
-                    onConfirm={() => void archiveSelectedDefinition()}
-                  >
-                    <Button
-                      variant="outline"
-                      className="mt-2 w-full border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
-                      disabled={saving}
-                    >
-                      <Archive />
-                      Lưu trữ quy trình
-                    </Button>
-                  </Popconfirm>
-                ) : null}
-              </div>
-            ) : null}
-
-            {selected && canManage ? (
-              <div className="border-t border-[#E4EAE3] p-4">
-                <span className="text-xs font-black tracking-wide text-[#78837B] uppercase">
-                  Thêm node
-                </span>
-                <p className="mt-1 text-[10px] leading-4 text-[#7B867E]">
-                  Bấm để thêm nhanh hoặc kéo node vào vị trí mong muốn trên canvas.
-                </p>
-                <div className="mt-2 grid gap-1.5">
-                  {(Object.keys(nodeMeta) as WorkflowNodeType[]).map((type) => {
-                    const meta = nodeMeta[type];
-                    const Icon = meta.icon;
-                    return (
-                      <Button
-                        key={type}
-                        type="button"
-                        variant="ghost"
-                        draggable
-                        onClick={() => addNode(type)}
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData(WORKFLOW_NODE_DRAG_TYPE, type);
-                          event.dataTransfer.setData('text/plain', type);
-                          event.dataTransfer.effectAllowed = 'copy';
-                        }}
-                        className="h-auto w-full cursor-grab justify-start gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left whitespace-normal transition hover:border-[#DCE5DB] hover:bg-white active:cursor-grabbing"
-                      >
-                        <span className={`grid size-8 place-items-center rounded-lg border ${meta.color}`}>
-                          <Icon size={15} />
-                        </span>
-                        <span>
-                          <strong className="block text-xs text-[#3A463E]">{meta.label}</strong>
-                          <span className="block text-[10px] text-[#859087]">{meta.description}</span>
-                        </span>
-                        <GripVertical className="ml-auto size-4 shrink-0 text-[#9AA49D]" />
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </aside>
-
-          <main className="min-w-0 border-b border-[#E4EAE3] xl:border-b-0 xl:border-r">
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7ECE6] px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <strong className="truncate text-sm text-[#2D3A31]">
-                    {selected?.name ?? 'Chọn một quy trình'}
-                  </strong>
-                  {selected?.graph?.version ? (
-                    <Badge variant="outline">
-                      v{selected.graph.version.versionNumber}
+                      {selected.status === 'published' ? 'Đã công bố' : 'Bản nháp'}
                     </Badge>
                   ) : null}
                 </div>
-                <span className="mt-0.5 block text-[11px] text-[#7A857D]">
-                  <Hand size={11} className="mr-1 inline" />
-                  Kéo node để sắp xếp · Chọn node để cấu hình
-                </span>
+                <p className="mt-0.5 truncate text-xs text-slate-500">
+                  {selected ? `${selected.key} · ${nodes.length} node · ${transitions.length} kết nối` : 'Chọn một mẫu trong thư viện bên trái để cấu hình.'}
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {canManage && selected ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void saveDraft()}
-                      disabled={saving}
-                    >
-                      <Save />
-                      Lưu nháp
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void validate()}
-                      disabled={saving}
-                    >
-                      <CircleDot />
-                      Kiểm tra
-                    </Button>
-                  </>
-                ) : null}
-                {canPublish && selected ? (
-                  <Button size="sm" onClick={() => void publish()} disabled={saving}>
-                    <Send />
-                    Công bố
-                  </Button>
-                ) : null}
-              </div>
-            </header>
-
-            <div className="bg-[#F7F9F6] p-4">
-              <WorkflowFlowCanvas
-                key={selected?.id ?? 'empty-workflow'}
-                nodes={nodes}
-                transitions={transitions}
-                nodeMeta={nodeMeta}
-                selectedNodeKey={selectedNodeKey}
-                editable={canManage}
-                onNodeSelect={setSelectedNodeKey}
-                onNodePositionsChange={updateNodePositions}
-                onAddNode={addNode}
-              />
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canManage && selected ? (
+                <>
+                  <Button variant="outline" size="sm" className="border-slate-200" onClick={() => void saveDraft()} disabled={saving}>
+                    <Save />
+                    Lưu nháp
+                  </Button>
+                  <Button variant="outline" size="sm" className="border-slate-200" onClick={() => void validate()} disabled={saving}>
+                    <CircleDot />
+                    Kiểm tra
+                  </Button>
+                </>
+              ) : null}
+              {canPublish && selected ? (
+                <Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => void publish()} disabled={saving}>
+                  <Send />
+                  Công bố
+                </Button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
-            {validation ? (
-              <div
-                className={`border-t px-4 py-3 text-sm ${validation.valid
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-red-200 bg-red-50 text-red-700'
+      </MaintenanceShell>
+      <div className={masterMatrixOpen ? 'hidden' : 'grid min-h-[600px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(560px,1fr)_360px]'}>
+        <aside className="flex min-h-0 flex-col border-b border-slate-200 bg-slate-50 lg:border-b-0 lg:border-r">
+          <div className="border-b border-slate-200 p-4">
+            <strong className="text-sm text-[#334039]">Quy trình của doanh nghiệp</strong>
+            <p className="mt-1 text-xs text-[#79837B]">{definitions.length} mẫu đã lưu</p>
+          </div>
+          <div className="relative mx-4 mt-3">
+            <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={workflowSearch}
+              onChange={(event) => setWorkflowSearch(event.target.value)}
+              placeholder="Tìm quy trình…"
+              className="h-9 border-slate-200 bg-white pl-8 text-xs"
+            />
+          </div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+            {filteredDefinitions.map((definition) => (
+              <Button
+                key={definition.id}
+                type="button"
+                variant="ghost"
+                onClick={() => void chooseDefinition(definition.id)}
+                className={`h-auto w-full flex-col items-stretch rounded-xl p-3 text-left whitespace-normal transition ${selected?.id === definition.id
+                  ? 'bg-blue-50 shadow-sm ring-1 ring-blue-200'
+                  : 'hover:bg-white'
                   }`}
               >
-                <div className="flex items-center gap-2 font-bold">
-                  {validation.valid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                  {validation.valid
-                    ? 'Quy trình hợp lệ'
-                    : `${validation.errors.length} lỗi cần xử lý`}
-                </div>
-                {[...validation.errors, ...validation.warnings].slice(0, 4).map((message) => (
-                  <div key={message} className="mt-1 pl-6 text-xs">
-                    • {message}
-                  </div>
-                ))}
+                <span className="flex items-center gap-2">
+                  <Route size={16} className="shrink-0 text-emerald-700" />
+                  <strong className="truncate text-sm text-[#354139]">{definition.name}</strong>
+                </span>
+                <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[#7B857E]">
+                  <span className="truncate">{definition.key}</span>
+                  <Badge
+                    variant="outline"
+                    className={
+                      definition.status === 'published'
+                        ? 'border-emerald-200 text-emerald-700'
+                        : 'border-amber-200 text-amber-700'
+                    }
+                  >
+                    {definition.status === 'published' ? 'Công bố' : 'Nháp'}
+                  </Badge>
+                </span>
+              </Button>
+            ))}
+            {!loading && !definitions.length ? (
+              <div className="p-6 text-center text-sm text-[#758078]">
+                Chưa có quy trình.
               </div>
             ) : null}
-          </main>
+          </div>
 
-          <aside className="bg-[#FBFCFA]">
-            <header className="border-b border-[#E4EAE3] p-4">
-              <span className="flex items-center gap-2">
-                <Settings2 size={16} className="text-emerald-700" />
-                <strong className="text-sm text-[#334039]">Thuộc tính node</strong>
+          {selected ? (
+            <div className="border-t border-[#E4EAE3] p-3">
+              <Button variant="outline" className="w-full" onClick={() => void clone()}>
+                <Copy />
+                Nhân bản quy trình
+              </Button>
+              {canManage ? (
+                <Popconfirm
+                  title="Lưu trữ quy trình?"
+                  description={`Quy trình “${selected.name}” sẽ được chuyển sang danh sách lưu trữ và có thể khôi phục.`}
+                  okText="Lưu trữ"
+                  cancelText="Hủy"
+                  okButtonProps={{ danger: true }}
+                  disabled={saving}
+                  onConfirm={() => void archiveSelectedDefinition()}
+                >
+                  <Button
+                    variant="outline"
+                    className="mt-2 w-full border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                    disabled={saving}
+                  >
+                    <Archive />
+                    Lưu trữ quy trình
+                  </Button>
+                </Popconfirm>
+              ) : null}
+            </div>
+          ) : null}
+
+          {selected && canManage ? (
+            <div className="border-t border-[#E4EAE3] p-4">
+              <span className="text-xs font-black tracking-wide text-[#78837B] uppercase">
+                Thêm node
               </span>
-              <p className="mt-1 text-xs text-[#79837B]">
-                Người nhận, SLA và hành động chuyển bước
+              <p className="mt-1 text-[10px] leading-4 text-[#7B867E]">
+                Bấm để thêm nhanh hoặc kéo node vào vị trí mong muốn trên canvas.
               </p>
-            </header>
-
-            {activeNode ? (
-              <div className="grid max-h-[650px] gap-4 overflow-y-auto p-4">
-                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
-                  Mã node
-                  <Input value={activeNode.key} disabled />
-                </Label>
-                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
-                  Tên hiển thị
-                  <Input
-                    value={activeNode.name}
-                    disabled={!canManage}
-                    onChange={(event) =>
-                      updateNode(activeNode.key, { name: event.target.value })
-                    }
-                  />
-                </Label>
-                <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
-                  Mô tả
-                  <Textarea
-                    rows={3}
-                    value={activeNode.description ?? ''}
-                    disabled={!canManage}
-                    onChange={(event) =>
-                      updateNode(activeNode.key, {
-                        description: event.target.value,
-                      })
-                    }
-                  />
-                </Label>
-
-                {activeNode.type === 'HUMAN_TASK' ? (
-                  <div className="grid gap-3 rounded-2xl border border-[#DEE7DD] bg-white p-3">
-                    <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      Người thực hiện
-                      <MultiSelectVariables
-                        value={activeNode.assignees
-                          .filter(
-                            (rule) =>
-                              (rule.assignmentRole ?? 'EXECUTOR') === 'EXECUTOR' &&
-                              Boolean(rule.assigneeVariableKey),
-                          )
-                          .map((rule) => rule.assigneeVariableKey as string)}
-                        disabled={!canManage}
-                        placeholder="Chọn tác nhân thực hiện…"
-                        onChange={(variableKeys) =>
-                          updateNode(activeNode.key, {
-                            assignees: [
-                              ...activeNode.assignees.filter(
-                                (rule) =>
-                                  (rule.assignmentRole ?? 'EXECUTOR') !==
-                                  'EXECUTOR',
-                              ),
-                              ...variableKeys.map((assigneeVariableKey) => ({
-                                type: 'ROLE' as WorkflowAssigneeType,
-                                assigneeVariableKey,
-                                assignmentRole: 'EXECUTOR' as const,
-                                strategy: 'ANY' as const,
-                                config: {},
-                              })),
-                            ],
-                          })
-                        }
-                      />
-                      <span className="font-normal text-[#7C877F]">
-                        Người thực hiện được giao task và có quyền xử lý.
+              <div className="mt-2 grid gap-1.5">
+                {(Object.keys(nodeMeta) as WorkflowNodeType[]).map((type) => {
+                  const meta = nodeMeta[type];
+                  const Icon = meta.icon;
+                  return (
+                    <Button
+                      key={type}
+                      type="button"
+                      variant="ghost"
+                      draggable
+                      onClick={() => addNode(type)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(WORKFLOW_NODE_DRAG_TYPE, type);
+                        event.dataTransfer.setData('text/plain', type);
+                        event.dataTransfer.effectAllowed = 'copy';
+                      }}
+                      className="h-auto w-full cursor-grab justify-start gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left whitespace-normal transition hover:border-[#DCE5DB] hover:bg-white active:cursor-grabbing"
+                    >
+                      <span className={`grid size-8 place-items-center rounded-lg border ${meta.color}`}>
+                        <Icon size={15} />
                       </span>
-                    </Label>
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      Người quan sát
-                      <MultiSelectVariables
-                        value={activeNode.assignees
-                          .filter(
-                            (rule) =>
-                              rule.assignmentRole === 'OBSERVER' &&
-                              Boolean(rule.assigneeVariableKey),
-                          )
-                          .map((rule) => rule.assigneeVariableKey as string)}
-                        disabled={!canManage}
-                        placeholder="Chọn tác nhân quan sát…"
-                        onChange={(variableKeys) =>
-                          updateNode(activeNode.key, {
-                            assignees: [
-                              ...activeNode.assignees.filter(
-                                (rule) => rule.assignmentRole !== 'OBSERVER',
-                              ),
-                              ...variableKeys.map((assigneeVariableKey) => ({
-                                type: 'ROLE' as WorkflowAssigneeType,
-                                assigneeVariableKey,
-                                assignmentRole: 'OBSERVER' as const,
-                                strategy: 'ANY' as const,
-                                config: {},
-                              })),
-                            ],
-                          })
-                        }
-                      />
-                      <span className="font-normal text-[#7C877F]">
-                        Người quan sát nhận thông báo và chỉ xem tiến độ/lịch sử.
+                      <span>
+                        <strong className="block text-xs text-[#3A463E]">{meta.label}</strong>
+                        <span className="block text-[10px] text-[#859087]">{meta.description}</span>
                       </span>
-                    </Label>
-                    <div className="hidden">
+                      <GripVertical className="ml-auto size-4 shrink-0 text-[#9AA49D]" />
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </aside>
+
+        <main className="min-w-0 border-b border-slate-200 lg:border-b-0 xl:border-r">
+          <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <strong className="truncate text-sm font-semibold text-slate-900">
+                  {selected?.name ?? 'Chọn một quy trình'}
+                </strong>
+                {selected?.graph?.version ? (
+                  <Badge variant="outline">
+                    v{selected.graph.version.versionNumber}
+                  </Badge>
+                ) : null}
+                {selected ? (
+                  <Badge
+                    variant="outline"
+                    className={
+                      selected.status === 'published'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    }
+                  >
+                    {selected.status === 'published' ? 'Đã công bố' : 'Bản nháp'}
+                  </Badge>
+                ) : null}
+              </div>
+              <span className="mt-0.5 block text-[11px] text-slate-500">
+                <Hand size={11} className="mr-1 inline" />
+                Kéo node để sắp xếp · Chọn node để cấu hình
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-slate-200 xl:hidden"
+                onClick={() => setInspectorOpen(true)}
+                disabled={!activeNode}
+              >
+                <Settings2 />
+                Cấu hình
+              </Button>
+              {canManage && selected ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void saveDraft()}
+                    disabled={saving}
+                  >
+                    <Save />
+                    Lưu nháp
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void validate()}
+                    disabled={saving}
+                  >
+                    <CircleDot />
+                    Kiểm tra
+                  </Button>
+                </>
+              ) : null}
+              {canPublish && selected ? (
+                <Button size="sm" className="bg-blue-700 hover:bg-blue-800" onClick={() => void publish()} disabled={saving}>
+                  <Send />
+                  Công bố
+                </Button>
+              ) : null}
+            </div>
+          </header>
+
+          <div className="min-h-[560px] bg-slate-50 p-4">
+            <WorkflowFlowCanvas
+              key={selected?.id ?? 'empty-workflow'}
+              nodes={nodes}
+              transitions={transitions}
+              nodeMeta={nodeMeta}
+              selectedNodeKey={selectedNodeKey}
+              editable={canManage}
+              onNodeSelect={setSelectedNodeKey}
+              onNodePositionsChange={updateNodePositions}
+              onAddNode={addNode}
+            />
+          </div>
+
+          {validation ? (
+            <div
+              className={`border-t px-4 py-3 text-sm ${validation.valid
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-red-200 bg-red-50 text-red-700'
+                }`}
+            >
+              <div className="flex items-center gap-2 font-bold">
+                {validation.valid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                {validation.valid
+                  ? 'Quy trình hợp lệ'
+                  : `${validation.errors.length} lỗi cần xử lý`}
+              </div>
+              {[...validation.errors, ...validation.warnings].slice(0, 4).map((message) => (
+                <div key={message} className="mt-1 pl-6 text-xs">
+                  • {message}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </main>
+
+        {inspectorOpen ? (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-slate-950/20 xl:hidden"
+            aria-label="Đóng cấu hình node"
+            onClick={() => setInspectorOpen(false)}
+          />
+        ) : null}
+        <aside
+          className={`${inspectorOpen ? 'fixed inset-y-0 right-0 z-50 flex w-[min(420px,calc(100vw-2rem))] flex-col bg-white shadow-2xl' : 'hidden'} xl:static xl:z-auto xl:flex xl:w-auto xl:flex-col xl:bg-[#FBFCFA] xl:shadow-none`}
+        >
+          <header className="border-b border-slate-200 p-4">
+            <span className="flex items-center gap-2">
+              <Settings2 size={16} className="text-emerald-700" />
+              <strong className="text-sm text-[#334039]">Thuộc tính node</strong>
+            </span>
+            <p className="mt-1 text-xs text-[#79837B]">
+              Người nhận, SLA và hành động chuyển bước
+            </p>
+          </header>
+
+          {activeNode ? (
+            <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 xl:max-h-[650px]">
+              <details open className="group rounded-lg border border-slate-200 bg-white p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-700 marker:text-slate-400">
+                  Thông tin cơ bản
+                </summary>
+                <div className="mt-3 grid gap-4">
+                  <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                    Mã node
+                    <Input value={activeNode.key} disabled />
+                  </Label>
+                  <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                    Tên hiển thị
+                    <Input
+                      value={activeNode.name}
+                      disabled={!canManage}
+                      onChange={(event) =>
+                        updateNode(activeNode.key, { name: event.target.value })
+                      }
+                    />
+                  </Label>
+                  <Label className="grid gap-1.5 text-xs font-bold text-[#5B675F]">
+                    Mô tả
+                    <Textarea
+                      rows={3}
+                      value={activeNode.description ?? ''}
+                      disabled={!canManage}
+                      onChange={(event) =>
+                        updateNode(activeNode.key, {
+                          description: event.target.value,
+                        })
+                      }
+                    />
+                  </Label>
+
+                </div>
+              </details>
+
+              {activeNode.type === 'HUMAN_TASK' ? (
+                <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <strong className="text-xs text-[#46534B]">Giao việc & SLA</strong>
+                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    Người thực hiện
+                    <MultiSelectVariables
+                      value={activeNode.assignees
+                        .filter(
+                          (rule) =>
+                            (rule.assignmentRole ?? 'EXECUTOR') === 'EXECUTOR' &&
+                            Boolean(rule.assigneeVariableKey),
+                        )
+                        .map((rule) => rule.assigneeVariableKey as string)}
+                      disabled={!canManage}
+                      placeholder="Chọn tác nhân thực hiện…"
+                      onChange={(variableKeys) =>
+                        updateNode(activeNode.key, {
+                          assignees: [
+                            ...activeNode.assignees.filter(
+                              (rule) =>
+                                (rule.assignmentRole ?? 'EXECUTOR') !==
+                                'EXECUTOR',
+                            ),
+                            ...variableKeys.map((assigneeVariableKey) => ({
+                              type: 'ROLE' as WorkflowAssigneeType,
+                              assigneeVariableKey,
+                              assignmentRole: 'EXECUTOR' as const,
+                              strategy: 'ANY' as const,
+                              config: {},
+                            })),
+                          ],
+                        })
+                      }
+                    />
+                    <span className="font-normal text-[#7C877F]">
+                      Người thực hiện được giao task và có quyền xử lý.
+                    </span>
+                  </Label>
+                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    Người quan sát
+                    <MultiSelectVariables
+                      value={activeNode.assignees
+                        .filter(
+                          (rule) =>
+                            rule.assignmentRole === 'OBSERVER' &&
+                            Boolean(rule.assigneeVariableKey),
+                        )
+                        .map((rule) => rule.assigneeVariableKey as string)}
+                      disabled={!canManage}
+                      placeholder="Chọn tác nhân quan sát…"
+                      onChange={(variableKeys) =>
+                        updateNode(activeNode.key, {
+                          assignees: [
+                            ...activeNode.assignees.filter(
+                              (rule) => rule.assignmentRole !== 'OBSERVER',
+                            ),
+                            ...variableKeys.map((assigneeVariableKey) => ({
+                              type: 'ROLE' as WorkflowAssigneeType,
+                              assigneeVariableKey,
+                              assignmentRole: 'OBSERVER' as const,
+                              strategy: 'ANY' as const,
+                              config: {},
+                            })),
+                          ],
+                        })
+                      }
+                    />
+                    <span className="font-normal text-[#7C877F]">
+                      Người quan sát nhận thông báo và chỉ xem tiến độ/lịch sử.
+                    </span>
+                  </Label>
+                  <div className="hidden">
                     <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                       Nguồn người nhận
                       <Select
@@ -1459,7 +1608,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       </Select>
                     </Label>
                     {!activeNode.assignees[0]?.assigneeVariableKey &&
-                    activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
+                      activeNode.assignees[0]?.type === 'REQUEST_FIELD' ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Tên trường trên phiếu
                         <Select
@@ -1488,9 +1637,9 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       </Label>
                     ) : null}
                     {!activeNode.assignees[0]?.assigneeVariableKey &&
-                    ['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
-                      activeNode.assignees[0]?.type ?? '',
-                    ) ? (
+                      ['USER', 'ORGANIZATION_UNIT', 'POSITION', 'ROLE'].includes(
+                        activeNode.assignees[0]?.type ?? '',
+                      ) ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Đối tượng nhận việc
                         {assigneeSubjectOptions.length ? (
@@ -1541,7 +1690,7 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                       </Label>
                     ) : null}
                     {!activeNode.assignees[0]?.assigneeVariableKey &&
-                    activeNode.assignees[0]?.type ===
+                      activeNode.assignees[0]?.type ===
                       'MANAGER_OF_REQUESTER' ? (
                       <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
                         Chức danh quản lý dự phòng
@@ -1588,289 +1737,288 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
                         </Select>
                       </Label>
                     ) : null}
-                    </div>
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      SLA (phút)
-                      <Input
-                        type="number"
-                        min={1}
-                        value={Number(activeNode.config.slaMinutes ?? 1440)}
-                        disabled={!canManage}
-                        onChange={(event) =>
-                          updateNode(activeNode.key, {
-                            config: {
-                              ...activeNode.config,
-                              slaMinutes: Number(event.target.value),
-                            },
-                          })
-                        }
-                      />
-                    </Label>
-                    <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
-                      Quyền bắt buộc (tùy chọn)
-                      <Input
-                        value={String(
-                          activeNode.config.requiredPermission ?? '',
-                        )}
-                        disabled={!canManage}
-                        placeholder="Ví dụ: work_order.review"
-                        onChange={(event) =>
-                          updateNode(activeNode.key, {
-                            config: {
-                              ...activeNode.config,
-                              requiredPermission:
-                                event.target.value.trim() || undefined,
-                            },
-                          })
-                        }
-                      />
-                    </Label>
-                    <div className="grid gap-2 border-t border-[#E7ECE6] pt-3">
-                      <div className="flex items-center justify-between">
-                        <span>
-                          <strong className="block text-xs text-[#46534B]">
-                            Biểu mẫu khi xử lý
-                          </strong>
-                          <span className="text-[10px] font-normal text-[#7B867E]">
-                            Dữ liệu được lưu trong nhật ký hành động.
-                          </span>
+                  </div>
+                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    SLA (phút)
+                    <Input
+                      type="number"
+                      min={1}
+                      value={Number(activeNode.config.slaMinutes ?? 1440)}
+                      disabled={!canManage}
+                      onChange={(event) =>
+                        updateNode(activeNode.key, {
+                          config: {
+                            ...activeNode.config,
+                            slaMinutes: Number(event.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </Label>
+                  <Label className="grid gap-1 text-[11px] font-bold text-[#68736B]">
+                    Quyền bắt buộc (tùy chọn)
+                    <Input
+                      value={String(
+                        activeNode.config.requiredPermission ?? '',
+                      )}
+                      disabled={!canManage}
+                      placeholder="Ví dụ: work_order.review"
+                      onChange={(event) =>
+                        updateNode(activeNode.key, {
+                          config: {
+                            ...activeNode.config,
+                            requiredPermission:
+                              event.target.value.trim() || undefined,
+                          },
+                        })
+                      }
+                    />
+                  </Label>
+                  <div className="grid gap-2 border-t border-[#E7ECE6] pt-3">
+                    <div className="flex items-center justify-between">
+                      <span>
+                        <strong className="block text-xs text-[#46534B]">
+                          Biểu mẫu khi xử lý
+                        </strong>
+                        <span className="text-[10px] font-normal text-[#7B867E]">
+                          Dữ liệu được lưu trong nhật ký hành động.
                         </span>
-                        {canManage ? (
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            onClick={addFormField}
-                          >
-                            <Plus />
-                            Thêm trường
-                          </Button>
-                        ) : null}
-                      </div>
-                      {(
-                        (activeNode.config.formFields as
-                          | WorkflowFormField[]
-                          | undefined) ?? []
-                      ).map((field, index) => (
-                        <div
-                          key={`${field.key}-${index}`}
-                          className="grid gap-2 rounded-xl border border-[#E2E8E1] bg-[#F9FBF8] p-2"
+                      </span>
+                      {canManage ? (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={addFormField}
                         >
-                          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                            <Input
-                              value={field.label}
-                              disabled={!canManage}
-                              className="h-8 text-xs"
-                              placeholder="Nhãn trường"
-                              onChange={(event) =>
-                                updateFormField(index, {
-                                  label: event.target.value,
-                                })
-                              }
-                            />
-                            <Input
-                              value={field.key}
-                              disabled={!canManage}
-                              className="h-8 text-xs"
-                              placeholder="field_key"
-                              onChange={(event) =>
-                                updateFormField(index, {
-                                  key: slugKey(event.target.value),
-                                })
-                              }
-                            />
-                            {canManage ? (
-                              <Button
-                                type="button"
-                                size="icon-xs"
-                                variant="ghost"
-                                className="text-red-600"
-                                aria-label={`Xóa trường ${field.label}`}
-                                onClick={() => removeFormField(index)}
-                              >
-                                <Trash2 />
-                              </Button>
-                            ) : null}
-                          </div>
-                          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                            <Select
-                              value={field.type}
-                              disabled={!canManage}
-                              onValueChange={(type) =>
-                                updateFormField(index, {
-                                  type: type as WorkflowFormField['type'],
-                                })
-                              }
-                            >
-                              <SelectTrigger size="sm" className="w-full bg-white text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent position="popper" align="start">
-                                <SelectItem value="text">Văn bản ngắn</SelectItem>
-                                <SelectItem value="textarea">Văn bản dài</SelectItem>
-                                <SelectItem value="number">Số</SelectItem>
-                                <SelectItem value="boolean">Có/không</SelectItem>
-                                <SelectItem value="date">Ngày</SelectItem>
-                                <SelectItem value="select">Danh sách chọn</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Label className="flex items-center gap-1.5 text-[10px] font-bold">
-                              <Checkbox
-                                checked={field.required ?? false}
-                                disabled={!canManage}
-                                onCheckedChange={(checked) =>
-                                  updateFormField(index, {
-                                    required: checked === true,
-                                  })
-                                }
-                              />
-                              Bắt buộc
-                            </Label>
-                          </div>
-                          {field.type === 'select' ? (
-                            <Input
-                              value={(field.options ?? []).join(', ')}
-                              disabled={!canManage}
-                              className="h-8 text-xs"
-                              placeholder="Lựa chọn A, Lựa chọn B"
-                              onChange={(event) =>
-                                updateFormField(index, {
-                                  options: event.target.value
-                                    .split(',')
-                                    .map((value) => value.trim())
-                                    .filter(Boolean),
-                                })
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      ))}
+                          <Plus />
+                          Thêm trường
+                        </Button>
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between">
-                    <strong className="text-xs text-[#46534B]">Hành động đi ra</strong>
-                    {canManage && activeNode.type !== 'END' ? (
-                      <Button size="xs" variant="outline" onClick={addTransition}>
-                        <Plus />
-                        Thêm
-                      </Button>
-                    ) : null}
-                  </div>
-                  {activeTransitions.map((transition) => (
-                    <div
-                      key={transition.actionKey}
-                      className="grid gap-2 rounded-2xl border border-[#DEE7DD] bg-white p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ArrowRight size={14} className="text-emerald-700" />
-                        <Input
-                          value={transition.label}
-                          disabled={!canManage}
-                          className="h-8"
-                          aria-label="Nhãn hành động"
-                          onChange={(event) =>
-                            updateTransition(transition.actionKey, {
-                              label: event.target.value,
-                            })
-                          }
-                        />
-                        {canManage ? (
-                          <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            className="text-red-600"
-                            aria-label="Xóa kết nối"
-                            onClick={() => removeTransition(transition.actionKey)}
-                          >
-                            <Trash2 />
-                          </Button>
-                        ) : null}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
-                          Action key
+                    {(
+                      (activeNode.config.formFields as
+                        | WorkflowFormField[]
+                        | undefined) ?? []
+                    ).map((field, index) => (
+                      <div
+                        key={`${field.key}-${index}`}
+                        className="grid gap-2 rounded-xl border border-[#E2E8E1] bg-[#F9FBF8] p-2"
+                      >
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
                           <Input
-                            value={transition.actionKey}
+                            value={field.label}
                             disabled={!canManage}
                             className="h-8 text-xs"
+                            placeholder="Nhãn trường"
                             onChange={(event) =>
-                              updateTransition(transition.actionKey, {
-                                actionKey: slugKey(event.target.value),
+                              updateFormField(index, {
+                                label: event.target.value,
                               })
                             }
                           />
-                        </Label>
-                        <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
-                          Node đích
-                          <Select
-                            value={transition.targetKey}
+                          <Input
+                            value={field.key}
                             disabled={!canManage}
-                            onValueChange={(targetKey) =>
-                              updateTransition(transition.actionKey, {
-                                targetKey,
+                            className="h-8 text-xs"
+                            placeholder="field_key"
+                            onChange={(event) =>
+                              updateFormField(index, {
+                                key: slugKey(event.target.value),
+                              })
+                            }
+                          />
+                          {canManage ? (
+                            <Button
+                              type="button"
+                              size="icon-xs"
+                              variant="ghost"
+                              className="text-red-600"
+                              aria-label={`Xóa trường ${field.label}`}
+                              onClick={() => removeFormField(index)}
+                            >
+                              <Trash2 />
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                          <Select
+                            value={field.type}
+                            disabled={!canManage}
+                            onValueChange={(type) =>
+                              updateFormField(index, {
+                                type: type as WorkflowFormField['type'],
                               })
                             }
                           >
                             <SelectTrigger size="sm" className="w-full bg-white text-xs">
-                              <SelectValue placeholder="Chọn node đích" />
+                              <SelectValue />
                             </SelectTrigger>
                             <SelectContent position="popper" align="start">
-                              {nodes
-                                .filter((node) => node.key !== activeNode.key)
-                                .map((node) => (
-                                  <SelectItem key={node.key} value={node.key}>
-                                    {node.name}
-                                  </SelectItem>
-                                ))}
+                              <SelectItem value="text">Văn bản ngắn</SelectItem>
+                              <SelectItem value="textarea">Văn bản dài</SelectItem>
+                              <SelectItem value="number">Số</SelectItem>
+                              <SelectItem value="boolean">Có/không</SelectItem>
+                              <SelectItem value="date">Ngày</SelectItem>
+                              <SelectItem value="select">Danh sách chọn</SelectItem>
                             </SelectContent>
                           </Select>
-                        </Label>
+                          <Label className="flex items-center gap-1.5 text-[10px] font-bold">
+                            <Checkbox
+                              checked={field.required ?? false}
+                              disabled={!canManage}
+                              onCheckedChange={(checked) =>
+                                updateFormField(index, {
+                                  required: checked === true,
+                                })
+                              }
+                            />
+                            Bắt buộc
+                          </Label>
+                        </div>
+                        {field.type === 'select' ? (
+                          <Input
+                            value={(field.options ?? []).join(', ')}
+                            disabled={!canManage}
+                            className="h-8 text-xs"
+                            placeholder="Lựa chọn A, Lựa chọn B"
+                            onChange={(event) =>
+                              updateFormField(index, {
+                                options: event.target.value
+                                  .split(',')
+                                  .map((value) => value.trim())
+                                  .filter(Boolean),
+                              })
+                            }
+                          />
+                        ) : null}
                       </div>
-                      {activeNode.type === 'CONDITION' ? (
-                        <ConditionEditor
-                          key={`${selected?.id ?? 'draft'}-${transition.actionKey}`}
-                          condition={transition.condition}
-                          disabled={!canManage}
-                          onChange={(condition) =>
-                            updateTransition(transition.actionKey, { condition })
-                          }
-                        />
-                      ) : null}
-                    </div>
-                  ))}
-                  {!activeTransitions.length ? (
-                    <div className="rounded-xl border border-dashed border-[#D8E1D7] p-4 text-center text-xs text-[#7D8880]">
-                      Node chưa có hành động đi ra.
-                    </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <strong className="text-xs text-[#46534B]">Hành động đi ra</strong>
+                  {canManage && activeNode.type !== 'END' ? (
+                    <Button size="xs" variant="outline" onClick={addTransition}>
+                      <Plus />
+                      Thêm
+                    </Button>
                   ) : null}
                 </div>
-
-                {canManage ? (
-                  <Button
-                    variant="outline"
-                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => deleteNode(activeNode.key)}
-                    disabled={activeNode.type === 'START' && nodes.length === 1}
+                {activeTransitions.map((transition) => (
+                  <div
+                    key={transition.actionKey}
+                    className="grid gap-2 rounded-2xl border border-[#DEE7DD] bg-white p-3"
                   >
-                    <Trash2 />
-                    Xóa node
-                  </Button>
+                    <div className="flex items-center gap-2">
+                      <ArrowRight size={14} className="text-emerald-700" />
+                      <Input
+                        value={transition.label}
+                        disabled={!canManage}
+                        className="h-8"
+                        aria-label="Nhãn hành động"
+                        onChange={(event) =>
+                          updateTransition(transition.actionKey, {
+                            label: event.target.value,
+                          })
+                        }
+                      />
+                      {canManage ? (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          className="text-red-600"
+                          aria-label="Xóa kết nối"
+                          onClick={() => removeTransition(transition.actionKey)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+                        Action key
+                        <Input
+                          value={transition.actionKey}
+                          disabled={!canManage}
+                          className="h-8 text-xs"
+                          onChange={(event) =>
+                            updateTransition(transition.actionKey, {
+                              actionKey: slugKey(event.target.value),
+                            })
+                          }
+                        />
+                      </Label>
+                      <Label className="grid gap-1 text-[10px] font-bold text-[#717C74]">
+                        Node đích
+                        <Select
+                          value={transition.targetKey}
+                          disabled={!canManage}
+                          onValueChange={(targetKey) =>
+                            updateTransition(transition.actionKey, {
+                              targetKey,
+                            })
+                          }
+                        >
+                          <SelectTrigger size="sm" className="w-full bg-white text-xs">
+                            <SelectValue placeholder="Chọn node đích" />
+                          </SelectTrigger>
+                          <SelectContent position="popper" align="start">
+                            {nodes
+                              .filter((node) => node.key !== activeNode.key)
+                              .map((node) => (
+                                <SelectItem key={node.key} value={node.key}>
+                                  {node.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                    </div>
+                    {activeNode.type === 'CONDITION' ? (
+                      <ConditionEditor
+                        key={`${selected?.id ?? 'draft'}-${transition.actionKey}`}
+                        condition={transition.condition}
+                        disabled={!canManage}
+                        onChange={(condition) =>
+                          updateTransition(transition.actionKey, { condition })
+                        }
+                      />
+                    ) : null}
+                  </div>
+                ))}
+                {!activeTransitions.length ? (
+                  <div className="rounded-xl border border-dashed border-[#D8E1D7] p-4 text-center text-xs text-[#7D8880]">
+                    Node chưa có hành động đi ra.
+                  </div>
                 ) : null}
               </div>
-            ) : (
-              <div className="p-8 text-center text-sm text-[#7B857E]">
-                Chọn một node để chỉnh thuộc tính.
-              </div>
-            )}
-          </aside>
-        </div>
-      </MaintenanceShell>
+
+              {canManage ? (
+                <Button
+                  variant="outline"
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => deleteNode(activeNode.key)}
+                  disabled={activeNode.type === 'START' && nodes.length === 1}
+                >
+                  <Trash2 />
+                  Xóa node
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-sm text-[#7B857E]">
+              Chọn một node để chỉnh thuộc tính.
+            </div>
+          )}
+        </aside>
+      </div>
 
       {masterMatrixOpen ? (
-        <div className="mx-auto flex min-h-[720px] w-full max-w-[1500px] flex-col rounded-2xl border border-[#DCE5DB] bg-white p-6 shadow-sm">
+        <div className="mx-auto flex min-h-[720px] w-full max-w-none flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
           <div className="mb-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1886,113 +2034,193 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             </div>
             <p className="mt-2 text-xs text-[#7A857D]">Thay đổi được lưu tạm trên giao diện và chỉ gửi đi khi bấm Lưu thay đổi.</p>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-[#DCE5DB]">
-            {masterMatrix.status === 'loading' ? (
-              <div className="p-10 text-center text-sm text-[#758078]">
-                Đang tải Ma trận Master…
-              </div>
-            ) : null}
-            {masterMatrix.status !== 'loading' && !masterMatrix.definitions.length ? (
-              <div className="p-10 text-center text-sm text-[#758078]">
-                Chưa có quy trình đang hoạt động.
-              </div>
-            ) : null}
-            {masterMatrix.status !== 'loading' && masterMatrix.definitions.length ? (
-              <table className="min-w-[980px] w-full table-fixed border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-20 bg-[#F0F5F1] text-[#46534B]">
-                  <tr>
-                    <th className="sticky left-0 z-30 w-56 border-r border-b border-[#DCE5DB] bg-[#F0F5F1] px-3 py-3 font-bold">
-                      Quy trình
-                    </th>
-                    {roles.map((role) => (
-                      <th
-                        key={role.id}
-                        className="w-56 border-r border-b border-[#DCE5DB] px-3 py-3 text-center font-bold"
-                      >
-                        <div>{role.code}</div>
-                        <div className="mt-1 font-normal text-[#778178]">{role.name}</div>
+          <div className="grid min-h-0 flex-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="min-h-0 overflow-auto rounded-lg border border-slate-200">
+              {masterMatrix.status === 'loading' ? (
+                <div className="p-10 text-center text-sm text-[#758078]">
+                  Đang tải Ma trận Master…
+                </div>
+              ) : null}
+              {masterMatrix.status !== 'loading' && !masterMatrix.definitions.length ? (
+                <div className="p-10 text-center text-sm text-[#758078]">
+                  Chưa có quy trình đang hoạt động.
+                </div>
+              ) : null}
+              {masterMatrix.status !== 'loading' && masterMatrix.definitions.length ? (
+                <table
+                  className="w-full table-fixed border-collapse text-left text-xs"
+                  style={
+                    roles.length > 6
+                      ? { minWidth: `${220 + roles.length * 150}px` }
+                      : undefined
+                  }
+                >
+                  <thead className="sticky top-0 z-20 bg-[#F0F5F1] text-[#46534B]">
+                    <tr>
+                      <th className="sticky left-0 z-30 w-52 border-r border-b border-[#DCE5DB] bg-[#F0F5F1] px-3 py-3 font-bold">
+                        Quy trình
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {masterMatrix.definitions.map((definition) => {
-                    const variableOptions = (
-                      definition.requiredVariables?.length
-                        ? definition.requiredVariables
-                        : definition.requiredVariableKeys.map((key) => ({
-                            key,
-                            assignmentRoles: [],
-                          }))
-                    )
-                      .map(({ key, assignmentRoles }) => ({
-                        value: key,
-                        label: assignmentRoles.length
-                          ? `Biến ${key} · ${assignmentRoles
-                              .map((role) =>
-                                role === 'EXECUTOR' ? 'Thực hiện' : 'Quan sát',
-                              )
+                      {roles.map((role) => (
+                        <th
+                          key={role.id}
+                          className="border-r border-b border-[#DCE5DB] px-3 py-3 text-center font-bold"
+                        >
+                          <div>{role.code}</div>
+                          <div className="mt-1 font-normal text-[#778178]">{role.name}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {masterMatrix.definitions.map((definition) => {
+                      const variableOptions = getMasterMatrixVariables(definition)
+                        .map(({ key, assignmentRoles }) => ({
+                          value: key,
+                          label: assignmentRoles.length
+                            ? `Biến ${key} · ${assignmentRoles
+                              .map(assignmentRoleLabel)
                               .join(', ')}`
-                          : `Biến ${key}`,
-                      }))
-                      .sort((left, right) => left.value.localeCompare(right.value));
-                    const variableKeys = variableOptions.map((option) => option.value);
-                    return (
-                      <tr key={definition.id} className="bg-white hover:bg-[#F8FAF7]">
-                        <td className="sticky left-0 z-10 border-r border-b border-[#DCE5DB] bg-white px-3 py-3 font-medium text-[#354139]">
-                          <div>{definition.name}</div>
-                          <div className="mt-1 font-normal text-[#78837B]">{definition.key}</div>
-                          {!variableKeys.length ? (
-                            <div className="mt-1 font-normal text-amber-700">
-                              Chưa khai báo biến tác nhân.
+                            : `Biến ${key}`,
+                        }))
+                        .sort((left, right) => left.value.localeCompare(right.value));
+                      const variableKeys = variableOptions.map((option) => option.value);
+                      return (
+                        <tr
+                          key={definition.id}
+                          className={`cursor-pointer ${selectedMasterMatrixDefinitionId === definition.id
+                            ? 'bg-emerald-50/70'
+                            : 'bg-white hover:bg-[#F8FAF7]'
+                            }`}
+                          onClick={() => setSelectedMasterMatrixDefinitionId(definition.id)}
+                        >
+                          <td className="sticky left-0 z-10 border-r border-b border-[#DCE5DB] bg-white px-3 py-3 font-medium text-[#354139]">
+                            <div>{definition.name}</div>
+                            <div className="mt-1 font-normal text-[#78837B]">{definition.key}</div>
+                            {!variableKeys.length ? (
+                              <div className="mt-1 font-normal text-amber-700">
+                                Chưa khai báo biến tác nhân.
+                              </div>
+                            ) : null}
+                          </td>
+                          {roles.map((role) => {
+                            const selectedVariableKeys = masterMatrix.draftMappings
+                              .filter(
+                                (mapping) =>
+                                  mapping.definitionId === definition.id &&
+                                  mapping.targetType === 'ROLE' &&
+                                  mapping.targetId === role.id,
+                              )
+                              .map((mapping) => mapping.variableKey)
+                              .filter((variableKey) => variableKeys.includes(variableKey));
+                            return (
+                              <td key={role.id} className="border-r border-b border-[#DCE5DB] p-2">
+                                {!variableKeys.length ? (
+                                  <div className="flex h-11 items-center rounded-lg border border-dashed border-[#DCE5DB] px-3 text-xs text-[#A0AAA2]">
+                                    —
+                                  </div>
+                                ) : (
+                                  <MultiSelectVariables
+                                    value={selectedVariableKeys}
+                                    options={variableOptions}
+                                    compact
+                                    disabled={!canManage || masterMatrix.saving}
+                                    placeholder="Chọn biến…"
+                                    onChange={(nextVariableKeys) =>
+                                      dispatch(
+                                        masterMatrixRoleVariablesChanged({
+                                          definitionId: definition.id,
+                                          roleId: role.id,
+                                          variableKeys: nextVariableKeys,
+                                        }),
+                                      )
+                                    }
+                                  />
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+            <aside className="min-h-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50">
+              {(() => {
+                const definition = masterMatrix.definitions.find(
+                  (item) => item.id === selectedMasterMatrixDefinitionId,
+                );
+                if (!definition) {
+                  return (
+                    <div className="p-8 text-center text-sm text-[#7A857D]">
+                      Chọn một quy trình ở bảng bên trái để xem chi tiết Bảng tra cứu tác nhân.
+                    </div>
+                  );
+                }
+                const variables = getMasterMatrixVariables(definition);
+                return (
+                  <div className="space-y-5 p-4">
+                    <div className="border-b border-[#DCE5DB] pb-4">
+                      <h3 className="font-bold text-[#2A342E]">{definition.name}</h3>
+                      <p className="mt-1 text-xs text-[#7A857D]">Bảng tra cứu tác nhân · {definition.key}</p>
+                    </div>
+                    {!variables.length ? (
+                      <p className="text-sm text-[#7A857D]">Quy trình này chưa khai báo biến tác nhân trong node Công việc.</p>
+                    ) : (
+                      variables.map((variable) => {
+                        const mappedRoles = masterMatrix.draftMappings
+                          .filter(
+                            (mapping) =>
+                              mapping.definitionId === definition.id &&
+                              mapping.variableKey === variable.key &&
+                              mapping.targetType === 'ROLE',
+                          )
+                          .map((mapping) => roles.find((role) => role.id === mapping.targetId))
+                          .filter((role): role is Role => Boolean(role));
+                        return (
+                          <section key={variable.key} className="border-b border-slate-200 py-3 last:border-b-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="rounded-md bg-emerald-50 px-2 py-1 font-mono text-sm font-bold text-emerald-800">[{variable.key}]</span>
+                              <div className="flex flex-wrap justify-end gap-1">
+                                {variable.assignmentRoles.map((role) => (
+                                  <span key={role} className="rounded-full bg-[#F1F4F1] px-2 py-0.5 text-[10px] font-medium text-[#59665D]">
+                                    {assignmentRoleLabel(role)}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          ) : null}
-                        </td>
-                        {roles.map((role) => {
-                          const selectedVariableKeys = masterMatrix.draftMappings
-                            .filter(
-                              (mapping) =>
-                                mapping.definitionId === definition.id &&
-                                mapping.targetType === 'ROLE' &&
-                                mapping.targetId === role.id,
-                            )
-                            .map((mapping) => mapping.variableKey)
-                            .filter((variableKey) => variableKeys.includes(variableKey));
-                          return (
-                            <td key={role.id} className="border-r border-b border-[#DCE5DB] p-2">
-                              {!variableKeys.length ? (
-                                <div className="flex h-11 items-center rounded-lg border border-dashed border-[#DCE5DB] px-3 text-xs text-[#A0AAA2]">
-                                  —
-                                </div>
-                              ) : (
-                              <MultiSelectVariables
-                                value={selectedVariableKeys}
-                                options={variableOptions}
-                                compact
-                                disabled={!canManage || masterMatrix.saving}
-                                placeholder="Chọn biến…"
-                                onChange={(nextVariableKeys) =>
-                                  dispatch(
-                                    masterMatrixRoleVariablesChanged({
-                                      definitionId: definition.id,
-                                      roleId: role.id,
-                                      variableKeys: nextVariableKeys,
-                                    }),
-                                  )
-                                }
-                              />
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : null}
+                            <div className="mt-2 flex items-center gap-2 text-xs">
+                              <div className="font-medium text-[#6A766D]">Vai trò được gán</div>
+                              <div className="flex flex-wrap gap-1">
+                                {mappedRoles.length ? mappedRoles.map((role) => (
+                                  <span key={role.id} className="rounded bg-blue-50 px-1.5 py-1 text-blue-800">
+                                    {role.code} · {role.name}
+                                  </span>
+                                )) : <span className="text-amber-700">Chưa gán vai trò</span>}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1 text-xs">
+                              <div className="font-medium text-[#6A766D]">Node sử dụng biến này</div>
+                              <div className="flex flex-wrap gap-x-2 gap-y-1">
+                                {variable.nodeUsages.length ? variable.nodeUsages.map((usage) => (
+                                  <div key={`${usage.nodeKey}-${usage.assignmentRole}`} className="flex items-center gap-1 text-[#3E4B42]">
+                                    <span>{usage.nodeName}</span>
+                                    <span className="shrink-0 text-[#778178]">{assignmentRoleLabel(usage.assignmentRole)}</span>
+                                  </div>
+                                )) : <span className="text-[#9AA39D]">Chi tiết node sẽ hiển thị sau khi BE được restart.</span>}
+                              </div>
+                            </div>
+                          </section>
+                        );
+                      })
+                    )}
+                  </div>
+                );
+              })()}
+            </aside>
           </div>
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 border-t border-slate-200 bg-white pt-4">
             <span className="text-sm text-[#6D786F]">
               {masterMatrix.dirtyDefinitionIds.length
                 ? `${masterMatrix.dirtyDefinitionIds.length} quy trình có thay đổi chưa lưu.`
@@ -2045,95 +2273,95 @@ export function WorkflowsPage({ tenantSlug }: { tenantSlug: string }) {
             ) : null}
             {!masterBoardLoading
               ? masterBoardMappings.map((mapping, index) => {
-                  const targetOptions = masterBoardTargetOptions[mapping.targetType];
-                  return (
-                    <div
-                      key={mapping.id ?? `${mapping.variableKey}-${index}`}
-                      className="grid gap-3 rounded-xl border border-[#DCE5DB] bg-[#F8FAF7] p-3 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)_auto] md:items-end"
-                    >
-                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
-                        Tên biến
-                        <Input
-                          value={mapping.variableKey}
-                          disabled={!canManage || masterBoardSaving}
-                          placeholder="Ví dụ: nguoi_xu_ly"
-                          onChange={(event) =>
-                            updateMasterBoardMapping(index, {
-                              variableKey: event.target.value,
-                            })
-                          }
-                        />
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
-                        Loại đối tượng
-                        <Select
-                          value={mapping.targetType}
-                          disabled={!canManage || masterBoardSaving}
-                          onValueChange={(value) => {
-                            const targetType = value as WorkflowRoleMappingTargetType;
-                            updateMasterBoardMapping(index, {
-                              targetType,
-                              targetId: masterBoardTargetOptions[targetType][0]?.id ?? '',
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="w-full bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent position="popper" align="start">
-                            <SelectItem value="USER">Người dùng</SelectItem>
-                            <SelectItem value="ROLE">Vai trò</SelectItem>
-                            <SelectItem value="POSITION">Chức danh</SelectItem>
-                            <SelectItem value="ORGANIZATION_UNIT">Đơn vị tổ chức</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
-                        Đối tượng nhận việc
-                        <Select
-                          value={mapping.targetId || '__none__'}
-                          disabled={
-                            !canManage || masterBoardSaving || !targetOptions.length
-                          }
-                          onValueChange={(targetId) =>
-                            updateMasterBoardMapping(index, {
-                              targetId: targetId === '__none__' ? '' : targetId,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="w-full bg-white">
-                            <SelectValue placeholder="Chọn đối tượng" />
-                          </SelectTrigger>
-                          <SelectContent position="popper" align="start">
-                            <SelectItem value="__none__">Chọn đối tượng</SelectItem>
-                            {targetOptions.map((option) => (
-                              <SelectItem key={option.id} value={option.id}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Label>
-                      {canManage ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                          disabled={masterBoardSaving}
-                          onClick={() =>
-                            setMasterBoardMappings((current) =>
-                              current.filter((_, itemIndex) => itemIndex !== index),
-                            )
-                          }
-                          aria-label={`Xóa biến ${mapping.variableKey || index + 1}`}
-                        >
-                          <Trash2 />
-                        </Button>
-                      ) : null}
-                    </div>
-                  );
-                })
+                const targetOptions = masterBoardTargetOptions[mapping.targetType];
+                return (
+                  <div
+                    key={mapping.id ?? `${mapping.variableKey}-${index}`}
+                    className="grid gap-3 rounded-xl border border-[#DCE5DB] bg-[#F8FAF7] p-3 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)_auto] md:items-end"
+                  >
+                    <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                      Tên biến
+                      <Input
+                        value={mapping.variableKey}
+                        disabled={!canManage || masterBoardSaving}
+                        placeholder="Ví dụ: nguoi_xu_ly"
+                        onChange={(event) =>
+                          updateMasterBoardMapping(index, {
+                            variableKey: event.target.value,
+                          })
+                        }
+                      />
+                    </Label>
+                    <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                      Loại đối tượng
+                      <Select
+                        value={mapping.targetType}
+                        disabled={!canManage || masterBoardSaving}
+                        onValueChange={(value) => {
+                          const targetType = value as WorkflowRoleMappingTargetType;
+                          updateMasterBoardMapping(index, {
+                            targetType,
+                            targetId: masterBoardTargetOptions[targetType][0]?.id ?? '',
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="USER">Người dùng</SelectItem>
+                          <SelectItem value="ROLE">Vai trò</SelectItem>
+                          <SelectItem value="POSITION">Chức danh</SelectItem>
+                          <SelectItem value="ORGANIZATION_UNIT">Đơn vị tổ chức</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                    <Label className="grid gap-1 text-xs font-bold text-[#5B675F]">
+                      Đối tượng nhận việc
+                      <Select
+                        value={mapping.targetId || '__none__'}
+                        disabled={
+                          !canManage || masterBoardSaving || !targetOptions.length
+                        }
+                        onValueChange={(targetId) =>
+                          updateMasterBoardMapping(index, {
+                            targetId: targetId === '__none__' ? '' : targetId,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Chọn đối tượng" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start">
+                          <SelectItem value="__none__">Chọn đối tượng</SelectItem>
+                          {targetOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Label>
+                    {canManage ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        disabled={masterBoardSaving}
+                        onClick={() =>
+                          setMasterBoardMappings((current) =>
+                            current.filter((_, itemIndex) => itemIndex !== index),
+                          )
+                        }
+                        aria-label={`Xóa biến ${mapping.variableKey || index + 1}`}
+                      >
+                        <Trash2 />
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })
               : null}
           </div>
           <DialogFooter className="sm:justify-between">
