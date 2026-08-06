@@ -17,6 +17,8 @@ export type WorkflowAssigneeType =
   | 'PREVIOUS_STEP_ACTOR'
   | 'MANAGER_OF_REQUESTER';
 
+export type WorkflowAssignmentRole = 'EXECUTOR' | 'OBSERVER';
+
 export interface WorkflowFormField {
   key: string;
   label: string;
@@ -34,7 +36,52 @@ export interface WorkflowAssignee {
   fieldKey?: string | null;
   strategy: 'ANY' | 'ALL' | 'QUORUM';
   quorum?: number | null;
+  assigneeVariableKey?: string | null;
+  assignmentRole?: WorkflowAssignmentRole;
   config: Record<string, unknown>;
+}
+
+export type WorkflowRoleMappingTargetType =
+  | 'USER'
+  | 'ROLE'
+  | 'POSITION'
+  | 'ORGANIZATION_UNIT';
+
+export interface WorkflowRoleMapping {
+  id?: string;
+  definitionId?: string;
+  variableKey: string;
+  targetType: WorkflowRoleMappingTargetType;
+  targetId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WorkflowRoleMappingBoard {
+  definitionId: string;
+  mappings: WorkflowRoleMapping[];
+}
+
+export interface WorkflowMasterBoardDefinition {
+  id: string;
+  key: string;
+  name: string;
+  status: 'draft' | 'published' | 'archived';
+  requiredVariableKeys: string[];
+  requiredVariables?: Array<{
+    key: string;
+    assignmentRoles: WorkflowAssignmentRole[];
+    nodeUsages: Array<{
+      nodeKey: string;
+      nodeName: string;
+      assignmentRole: WorkflowAssignmentRole;
+    }>;
+  }>;
+}
+
+export interface WorkflowGlobalMasterBoard {
+  definitions: WorkflowMasterBoardDefinition[];
+  mappings: WorkflowRoleMapping[];
 }
 
 export interface WorkflowNode {

@@ -2,7 +2,10 @@ import { apiRequest } from './api';
 import type {
   WorkflowDefinition,
   WorkflowDraftInput,
+  WorkflowGlobalMasterBoard,
   WorkflowInstance,
+  WorkflowRoleMapping,
+  WorkflowRoleMappingBoard,
   WorkflowValidation,
 } from '@/types/workflow';
 
@@ -54,6 +57,20 @@ export const workflowApi = {
       `/workflow/definitions/${id}/permanent`,
       { method: 'DELETE' },
     ),
+  getMasterBoard: (id: string) =>
+    apiRequest<WorkflowRoleMappingBoard>(
+      `/workflow/definitions/${id}/master-board`,
+    ),
+  saveMasterBoard: (id: string, mappings: WorkflowRoleMapping[]) =>
+    apiRequest<WorkflowRoleMappingBoard>(
+      `/workflow/definitions/${id}/master-board`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ mappings }),
+      },
+    ),
+  getGlobalMasterBoard: () =>
+    apiRequest<WorkflowGlobalMasterBoard>('/workflow/master-board'),
   getInstance: (id: string) =>
     apiRequest<WorkflowInstance>(`/workflow/instances/${id}`),
   getMyWorkItems: () => apiRequest('/workflow/work-items/mine'),
