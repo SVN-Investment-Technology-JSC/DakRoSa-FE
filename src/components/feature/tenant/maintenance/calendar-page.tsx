@@ -217,30 +217,6 @@ export function MaintenanceCalendarPage({
   const range = useMemo(() => monthRange(cursor), [cursor]);
   const isDemoMode = tenantSlug === 'dakrosa';
 
-  if (isDemoMode) {
-    return (
-      <Protected permission={PERMISSIONS.MAINTENANCE_SCHEDULE_VIEW}>
-        <MaintenanceShell
-          tenantSlug={tenantSlug}
-          title="Lịch bảo trì"
-          description="Dữ liệu demo cho tháng 7/2024 để kiểm tra giao diện lịch bảo trì trước khi tích hợp API thực tế."
-          actions={
-            <Button
-              variant="outline"
-              className="border-white/25 bg-white/10 text-white hover:bg-white/18 hover:text-white"
-              onClick={() => window.location.reload()}
-            >
-              <CalendarDays />
-              Demo data
-            </Button>
-          }
-        >
-          <MockMaintenanceCalendar />
-        </MaintenanceShell>
-      </Protected>
-    );
-  }
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -268,9 +244,12 @@ export function MaintenanceCalendarPage({
   }, [equipmentId, range.end, range.start, siteId, status]);
 
   useEffect(() => {
+    if (isDemoMode) {
+      return;
+    }
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
-  }, [load, tenantSlug]);
+  }, [load, tenantSlug, isDemoMode]);
 
   const days = useMemo(
     () =>
@@ -307,6 +286,30 @@ export function MaintenanceCalendarPage({
         .slice(0, 12),
     [occurrences],
   );
+
+  if (isDemoMode) {
+    return (
+      <Protected permission={PERMISSIONS.MAINTENANCE_SCHEDULE_VIEW}>
+        <MaintenanceShell
+          tenantSlug={tenantSlug}
+          title="Lịch bảo trì"
+          description="Dữ liệu demo cho tháng 7/2024 để kiểm tra giao diện lịch bảo trì trước khi tích hợp API thực tế."
+          actions={
+            <Button
+              variant="outline"
+              className="border-white/25 bg-white/10 text-white hover:bg-white/18 hover:text-white"
+              onClick={() => window.location.reload()}
+            >
+              <CalendarDays />
+              Demo data
+            </Button>
+          }
+        >
+          <MockMaintenanceCalendar />
+        </MaintenanceShell>
+      </Protected>
+    );
+  }
 
   const moveMonth = (offset: number) => {
     setCursor((value) => new Date(value.getFullYear(), value.getMonth() + offset, 1));
