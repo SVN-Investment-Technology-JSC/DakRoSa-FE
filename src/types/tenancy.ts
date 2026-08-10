@@ -20,6 +20,10 @@ export interface Organization {
   positions: Position[];
 }
 
+export interface OrganizationChartPerson { id: string; employeeCode: string; fullName: string; positionName: string; isPrimary: boolean; rank: number; }
+export interface OrganizationChartUnit extends OrganizationUnit { personnel: OrganizationChartPerson[]; children: OrganizationChartUnit[]; }
+export interface OrganizationChart { units: OrganizationChartUnit[]; positions: Position[]; }
+
 export interface TenantSettings {
   id: string;
   name: string;
@@ -56,6 +60,9 @@ export interface CreatePositionInput {
   name: string;
   organizationUnitId?: string;
 }
+
+export interface CreatePersonnelInput { employeeCode: string; fullName: string; phone?: string; email?: string; status?: string; }
+export interface CreatePersonnelAssignmentInput { organizationUnitId: string; positionId: string; isPrimary?: boolean; rank?: number; startDate?: string; }
 
 export interface CreateSiteInput {
   code: string;
