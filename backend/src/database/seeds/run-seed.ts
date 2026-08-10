@@ -1,0 +1,639 @@
+import * as bcrypt from 'bcrypt';
+import { IsNull } from 'typeorm';
+import { AppDataSource } from '../../config/typeorm.config';
+import { Permission } from '../../rbac/permission.entity';
+import { Role } from '../../rbac/role.entity';
+import { User } from '../../users/user.entity';
+import { OrgUnitType } from '../../org-units/org-unit-type.entity';
+import { OrgUnit } from '../../org-units/org-unit.entity';
+import { OrgUnitClosure } from '../../org-units/org-unit-closure.entity';
+import { OrgUnitMember } from '../../org-units/org-unit-member.entity';
+import { Position } from '../../positions/position.entity';
+import { Workflow } from '../../workflows/workflow.entity';
+import { WorkflowStep } from '../../workflows/workflow-step.entity';
+import { WorkflowKind } from '../../workflows/workflow-kind';
+import { RaciAssignment } from '../../raci/raci-assignment.entity';
+import { RoleLetterAllowlist } from '../../raci/role-letter-allowlist.entity';
+import { RoleLetter } from '../../raci/role-letter';
+import { MaintenancePart } from '../../maintenance/maintenance-part.entity';
+import { MaintenanceSchedule } from '../../maintenance/maintenance-schedule.entity';
+import { MaintenanceFrequency, computeNextDueAt, todayInVietnam } from '../../maintenance/maintenance-frequency';
+
+const SEED_PASSWORD = 'Password123!';
+
+const PERMISSIONS: Array<{ key: string; description: string }> = [
+  { key: 'workflow.design', description: 'Create and edit workflow templates and RACI assignments' },
+  { key: 'task.approve', description: 'Approve or reject a running task step' },
+  { key: 'org.manage', description: 'Create and edit org units and org unit types' },
+];
+
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ['workflow.design', 'task.approve', 'org.manage'],
+  workflow_designer: ['workflow.design'],
+  approver: ['task.approve'],
+  viewer: [],
+};
+
+const USERS: Array<{
+  email: string;
+  fullName: string;
+  avatarInitials: string;
+  roles: string[];
+  /** Overrides SEED_PASSWORD for this one account, if set. */
+  password?: string;
+}> = [
+  { email: 'vp.eng@company.vn', fullName: 'Nguyễn Văn Tuấn', avatarInitials: 'NT', roles: ['approver', 'workflow_designer'] },
+  { email: 'lead.dev@company.vn', fullName: 'Trần Văn Hoàng', avatarInitials: 'TH', roles: ['approver'] },
+  { email: 'staff.dev@company.vn', fullName: 'Lê Văn Nam', avatarInitials: 'LN', roles: ['approver'] },
+  { email: 'officer@company.vn', fullName: 'Phạm Thị Hà', avatarInitials: 'PH', roles: ['approver'] },
+  { email: 'auditor@company.vn', fullName: 'Đỗ Minh Khang', avatarInitials: 'DK', roles: ['approver', 'admin'] },
+  // Thêm nhân sự để thử thông báo & phân rã E(x) với nhiều người nhận khác nhau.
+  { email: 'ky.thuat1@company.vn', fullName: 'Vũ Thị Mai', avatarInitials: 'VM', roles: ['approver'] },
+  { email: 'ky.thuat2@company.vn', fullName: 'Hoàng Đức Anh', avatarInitials: 'HA', roles: ['approver'] },
+  { email: 'dien.nuoc@company.vn', fullName: 'Bùi Quốc Việt', avatarInitials: 'BV', roles: ['approver'] },
+  { email: 'truong.co.dien@company.vn', fullName: 'Ngô Thanh Sơn', avatarInitials: 'NS', roles: ['approver', 'workflow_designer'] },
+  { email: 'truong.van.hanh@company.vn', fullName: 'Đặng Hải Yến', avatarInitials: 'DY', roles: ['approver'] },
+  // Quick-access demo admin. Login requires a valid email + password >= 6 chars
+  // (class-validator on LoginDto), so a literal "admin"/"admin" pair isn't possible.
+  { email: 'admin@company.vn', fullName: 'Quản trị viên (Admin)', avatarInitials: 'AD', roles: ['admin'], password: 'admin123' },
+];
+
+async function seedPermissions(): Promise<Map<string, Permission>> {
+  const repo = AppDataSource.getRepository(Permission);
+  const map = new Map<string, Permission>();
+  for (const p of PERMISSIONS) {
+    let permission = await repo.findOne({ where: { key: p.key } });
+    if (!permission) {
+      permission = await repo.save(repo.create(p));
+      console.log(`  created permission ${p.key}`);
+    }
+    map.set(p.key, permission);
+  }
+  return map;
+}
+
+async function seedRoles(permissionMap: Map<string, Permission>): Promise<Map<string, Role>> {
+  const repo = AppDataSource.getRepository(Role);
+  const map = new Map<string, Role>();
+  for (const [roleName, permissionKeys] of Object.entries(ROLE_PERMISSIONS)) {
+    let role = await repo.findOne({ where: { name: roleName } });
+    const permissions = permissionKeys.map((key) => permissionMap.get(key)!);
+    if (!role) {
+      role = await repo.save(repo.create({ name: roleName, permissions }));
+      console.log(`  created role ${roleName} [${permissionKeys.join(', ') || 'no permissions'}]`);
+    } else {
+      role.permissions = permissions;
+      await repo.save(role);
+    }
+    map.set(roleName, role);
+  }
+  return map;
+}
+
+async function seedUsers(roleMap: Map<string, Role>): Promise<Map<string, User>> {
+  const repo = AppDataSource.getRepository(User);
+  const defaultPasswordHash = await bcrypt.hash(SEED_PASSWORD, 10);
+  const map = new Map<string, User>();
+  for (const u of USERS) {
+    let user = await repo.findOne({ where: { email: u.email } });
+    const roles = u.roles.map((name) => roleMap.get(name)!);
+    const passwordHash = u.password ? await bcrypt.hash(u.password, 10) : defaultPasswordHash;
+    if (!user) {
+      user = repo.create({
+        email: u.email,
+        passwordHash,
+        fullName: u.fullName,
+        avatarInitials: u.avatarInitials,
+        roles,
+      });
+      await repo.save(user);
+      console.log(`  created user ${u.email} [${u.roles.join(', ')}]`);
+    } else {
+      user.roles = roles;
+      await repo.save(user);
+    }
+    map.set(u.email, user);
+  }
+  return map;
+}
+
+const ORG_UNIT_TYPES: Array<{ code: string; name: string; defaultRank: number }> = [
+  { code: 'khoi', name: 'Khối', defaultRank: 1 },
+  { code: 'ban', name: 'Ban', defaultRank: 2 },
+  { code: 'to', name: 'Tổ', defaultRank: 3 },
+];
+
+interface OrgUnitSeed {
+  key: string;
+  title: string;
+  typeCode: string;
+  parentKey: string | null;
+  headEmail: string | null;
+}
+
+const ORG_UNITS: OrgUnitSeed[] = [
+  { key: 'khoi-ky-thuat', title: 'Khối Kỹ thuật', typeCode: 'khoi', parentKey: null, headEmail: 'vp.eng@company.vn' },
+  { key: 'ban-phat-trien', title: 'Ban Phát triển Phần mềm', typeCode: 'ban', parentKey: 'khoi-ky-thuat', headEmail: 'lead.dev@company.vn' },
+  { key: 'ban-ha-tang', title: 'Ban Hạ tầng & Vận hành', typeCode: 'ban', parentKey: 'khoi-ky-thuat', headEmail: 'staff.dev@company.vn' },
+  { key: 'to-backend', title: 'Tổ Backend', typeCode: 'to', parentKey: 'ban-phat-trien', headEmail: null },
+  { key: 'to-qa', title: 'Tổ QA', typeCode: 'to', parentKey: 'ban-phat-trien', headEmail: null },
+  { key: 'to-ha-tang-mang', title: 'Tổ Hạ tầng Mạng', typeCode: 'to', parentKey: 'ban-ha-tang', headEmail: 'auditor@company.vn' },
+  // Nhánh Cơ điện: có trưởng ban + 2 tổ có trưởng, để thử thông báo bảo trì
+  // rơi vào nhiều người khác nhau thay vì dồn hết về một tài khoản.
+  { key: 'ban-co-dien', title: 'Ban Cơ điện', typeCode: 'ban', parentKey: 'khoi-ky-thuat', headEmail: 'truong.co.dien@company.vn' },
+  { key: 'to-co-khi', title: 'Tổ Cơ khí', typeCode: 'to', parentKey: 'ban-co-dien', headEmail: 'truong.van.hanh@company.vn' },
+  { key: 'to-dien', title: 'Tổ Điện & Nước', typeCode: 'to', parentKey: 'ban-co-dien', headEmail: null },
+];
+
+async function seedOrgUnitTypes(): Promise<Map<string, OrgUnitType>> {
+  const repo = AppDataSource.getRepository(OrgUnitType);
+  const map = new Map<string, OrgUnitType>();
+  for (const t of ORG_UNIT_TYPES) {
+    let type = await repo.findOne({ where: { code: t.code } });
+    if (!type) {
+      type = await repo.save(repo.create(t));
+      console.log(`  created org unit type ${t.code}`);
+    }
+    map.set(t.code, type);
+  }
+  return map;
+}
+
+async function seedOrgUnits(
+  typeMap: Map<string, OrgUnitType>,
+  userMap: Map<string, User>,
+): Promise<Map<string, OrgUnit>> {
+  const unitRepo = AppDataSource.getRepository(OrgUnit);
+  const closureRepo = AppDataSource.getRepository(OrgUnitClosure);
+  const savedByKey = new Map<string, OrgUnit>();
+
+  for (const spec of ORG_UNITS) {
+    const parent = spec.parentKey ? savedByKey.get(spec.parentKey) ?? null : null;
+    const level = parent ? parent.level + 1 : 1;
+
+    let unit = await unitRepo.findOne({
+      where: { title: spec.title, parentId: parent?.id ?? undefined },
+    });
+
+    if (!unit) {
+      unit = unitRepo.create({
+        parentId: parent?.id ?? null,
+        typeId: typeMap.get(spec.typeCode)!.id,
+        title: spec.title,
+        level,
+        headUserId: spec.headEmail ? userMap.get(spec.headEmail)!.id : null,
+        isActive: true,
+        sortOrder: 0,
+      });
+      unit = await unitRepo.save(unit);
+
+      const closureRows: OrgUnitClosure[] = [
+        closureRepo.create({ ancestorId: unit.id, descendantId: unit.id, depth: 0 }),
+      ];
+      if (parent) {
+        const parentAncestry = await closureRepo.find({ where: { descendantId: parent.id } });
+        for (const row of parentAncestry) {
+          closureRows.push(
+            closureRepo.create({
+              ancestorId: row.ancestorId,
+              descendantId: unit.id,
+              depth: row.depth + 1,
+            }),
+          );
+        }
+      }
+      await closureRepo.save(closureRows);
+      console.log(`  created org unit ${spec.title} (level ${level})`);
+    }
+
+    savedByKey.set(spec.key, unit);
+  }
+
+  return savedByKey;
+}
+
+// --- Danh mục Chức vụ + tầng Nhân sự (BRD Epic 2/3: định tuyến theo chức vụ) ---
+
+const POSITIONS: Array<{ code: string; name: string; rank: number }> = [
+  { code: 'truong-don-vi', name: 'Trưởng đơn vị', rank: 10 },
+  { code: 'pho-don-vi', name: 'Phó đơn vị', rank: 20 },
+  { code: 'nhan-vien', name: 'Nhân viên', rank: 30 },
+];
+
+/** Ai làm ở đâu, giữ chức vụ gì. Heads are listed here too so the roster is complete. */
+const MEMBERSHIPS: Array<{ orgUnitKey: string; email: string; positionCode: string }> = [
+  { orgUnitKey: 'khoi-ky-thuat', email: 'vp.eng@company.vn', positionCode: 'truong-don-vi' },
+  { orgUnitKey: 'ban-phat-trien', email: 'lead.dev@company.vn', positionCode: 'truong-don-vi' },
+  { orgUnitKey: 'ban-ha-tang', email: 'staff.dev@company.vn', positionCode: 'truong-don-vi' },
+  { orgUnitKey: 'to-ha-tang-mang', email: 'auditor@company.vn', positionCode: 'truong-don-vi' },
+  // Tổ Backend deliberately has NO head — two staff instead. A RACI tag on the
+  // "Nhân viên" position here resolves to BOTH, which is the AND-logic case.
+  { orgUnitKey: 'to-backend', email: 'staff.dev@company.vn', positionCode: 'nhan-vien' },
+  { orgUnitKey: 'to-backend', email: 'officer@company.vn', positionCode: 'nhan-vien' },
+  { orgUnitKey: 'to-qa', email: 'officer@company.vn', positionCode: 'nhan-vien' },
+  // Tổ Hạ tầng Mạng gets real staff so its head is a genuine manager: without
+  // them he could not hold a Node E (US 1.2) and would have nobody to hand an
+  // E(x) to, which made the maintenance Work Order path a dead end.
+  { orgUnitKey: 'to-ha-tang-mang', email: 'officer@company.vn', positionCode: 'nhan-vien' },
+  { orgUnitKey: 'to-ha-tang-mang', email: 'staff.dev@company.vn', positionCode: 'nhan-vien' },
+  { orgUnitKey: 'ban-co-dien', email: 'truong.co.dien@company.vn', positionCode: 'truong-don-vi' },
+  { orgUnitKey: 'to-co-khi', email: 'truong.van.hanh@company.vn', positionCode: 'truong-don-vi' },
+  { orgUnitKey: 'to-co-khi', email: 'ky.thuat1@company.vn', positionCode: 'nhan-vien' },
+  { orgUnitKey: 'to-co-khi', email: 'ky.thuat2@company.vn', positionCode: 'nhan-vien' },
+  // Tổ Điện & Nước cố tình KHÔNG có trưởng: phiếu bảo trì của tổ này phải tự
+  // đẩy thông báo lên Trưởng Ban Cơ điện (kiểm chứng Escalation).
+  { orgUnitKey: 'to-dien', email: 'dien.nuoc@company.vn', positionCode: 'nhan-vien' },
+];
+
+async function seedPositions(): Promise<Map<string, Position>> {
+  const repo = AppDataSource.getRepository(Position);
+  const map = new Map<string, Position>();
+  for (const p of POSITIONS) {
+    let position = await repo.findOne({ where: { code: p.code } });
+    if (!position) {
+      position = await repo.save(repo.create(p));
+      console.log(`  created position ${p.name}`);
+    }
+    map.set(p.code, position);
+  }
+  return map;
+}
+
+async function seedMemberships(
+  orgUnitsByKey: Map<string, OrgUnit>,
+  userMap: Map<string, User>,
+  positionMap: Map<string, Position>,
+): Promise<void> {
+  const repo = AppDataSource.getRepository(OrgUnitMember);
+  for (const m of MEMBERSHIPS) {
+    const orgUnit = orgUnitsByKey.get(m.orgUnitKey)!;
+    const user = userMap.get(m.email)!;
+    const position = positionMap.get(m.positionCode)!;
+    const existing = await repo.findOne({
+      where: { orgUnitId: orgUnit.id, userId: user.id, positionId: position.id },
+    });
+    if (!existing) {
+      await repo.save(
+        repo.create({ orgUnitId: orgUnit.id, userId: user.id, positionId: position.id }),
+      );
+      console.log(`  ${m.email} → ${position.name} @ ${orgUnit.title}`);
+    }
+  }
+}
+
+const ROLE_LETTER_ALLOWLIST: Record<WorkflowKind, RoleLetter[]> = {
+  process: ['R', 'A', 'C', 'S', 'I'],
+  maintenance_linked: ['R', 'C', 'I', 'E'],
+  maintenance_direct: ['R', 'A', 'C', 'S', 'I', 'E'],
+};
+
+async function seedRoleLetterAllowlist(): Promise<void> {
+  const repo = AppDataSource.getRepository(RoleLetterAllowlist);
+  for (const [kind, letters] of Object.entries(ROLE_LETTER_ALLOWLIST) as Array<
+    [WorkflowKind, RoleLetter[]]
+  >) {
+    for (const roleLetter of letters) {
+      const existing = await repo.findOne({ where: { workflowKind: kind, roleLetter } });
+      if (!existing) {
+        await repo.save(repo.create({ workflowKind: kind, roleLetter }));
+      }
+    }
+  }
+  console.log('  role letter allowlist seeded');
+}
+
+interface RaciAssignmentSeed {
+  orgUnitKey: string;
+  /** Narrow to holders of this position within the unit (BRD position-based routing). */
+  positionCode?: string;
+  /** Narrow to one exact person. */
+  userEmail?: string;
+  roleLetter: RoleLetter;
+  fixedRollbackStepKey?: string;
+}
+
+interface WorkflowStepSeed {
+  key: string;
+  stepOrder: number;
+  stepCode: string;
+  stepName: string;
+  assignments: RaciAssignmentSeed[];
+  /** Code of the workflow to run as this step's Execution Flow (BRD 2 Flow 1). */
+  linkedSubFlowCode?: string;
+}
+
+interface WorkflowSeed {
+  code: string;
+  name: string;
+  description: string;
+  kind: WorkflowKind;
+  steps: WorkflowStepSeed[];
+}
+
+// BRD reconciliation: raci_assignments now tags an org unit at ANY level directly
+// (no more Level-1-only "column" + Level-2/3 "target" split) — matches the BRD's
+// TH1 (assign while a dept column is collapsed) / TH2 (assign after drilling down)
+// model. This also fixes the earlier deviation where step-1's S was awkwardly
+// modeled as column=Khối+target=Ban; it's now directly orgUnitKey: 'ban-phat-trien'.
+const WORKFLOWS: WorkflowSeed[] = [
+  {
+    code: 'WF-CAPEX',
+    name: 'Quy trình Phê duyệt CapEx',
+    description: 'Quy trình thẩm định và cấp phát vốn đầu tư tài sản cố định.',
+    kind: 'process',
+    steps: [
+      {
+        key: 'step-1',
+        stepOrder: 1,
+        stepCode: '1',
+        stepName: 'Khởi tạo Yêu cầu CapEx',
+        assignments: [{ orgUnitKey: 'ban-phat-trien', roleLetter: 'S' }],
+      },
+      {
+        key: 'step-2',
+        stepOrder: 2,
+        stepCode: '2',
+        stepName: 'Thẩm định Kỹ thuật & Dự toán',
+        assignments: [
+          // Position-targeted: resolves to BOTH "Nhân viên" of Tổ Backend, so this
+          // step exercises the AND-logic (all R holders must approve) out of the box.
+          { orgUnitKey: 'to-backend', positionCode: 'nhan-vien', roleLetter: 'R' },
+          { orgUnitKey: 'khoi-ky-thuat', roleLetter: 'C', fixedRollbackStepKey: 'step-1' },
+        ],
+      },
+      {
+        key: 'step-3',
+        stepOrder: 3,
+        stepCode: '3',
+        stepName: 'Kiểm tra Tuân thủ & Khung Pháp lý',
+        assignments: [
+          { orgUnitKey: 'to-qa', roleLetter: 'R' },
+          { orgUnitKey: 'khoi-ky-thuat', roleLetter: 'I' },
+        ],
+      },
+      {
+        key: 'step-4',
+        stepOrder: 4,
+        stepCode: '4',
+        stepName: 'Phê duyệt Cấp Khối',
+        assignments: [{ orgUnitKey: 'khoi-ky-thuat', roleLetter: 'A' }],
+        // BRD 2 Flow 1: approving this final step spawns the Execution Flow below.
+        linkedSubFlowCode: 'WF-EXEC',
+      },
+    ],
+  },
+  {
+    // BRD 2 — Luồng Thực thi. Node E sits on the manager of Ban Phát triển
+    // (who has subordinates), and is immediately followed by a Node C, which is
+    // exactly the adjacency BRD 2 Rule 4 requires.
+    code: 'WF-EXEC',
+    name: 'Luồng Thực thi & Nghiệm thu',
+    description: 'Luồng phái sinh: phân rã công việc E(x) và nghiệm thu kết quả.',
+    kind: 'maintenance_direct',
+    steps: [
+      {
+        key: 'exec-step-1',
+        stepOrder: 1,
+        stepCode: '1',
+        stepName: 'Thực thi công việc',
+        assignments: [{ orgUnitKey: 'ban-phat-trien', roleLetter: 'E' }],
+      },
+      {
+        key: 'exec-step-2',
+        stepOrder: 2,
+        stepCode: '2',
+        stepName: 'Nghiệm thu kết quả',
+        assignments: [
+          { orgUnitKey: 'khoi-ky-thuat', roleLetter: 'C', fixedRollbackStepKey: 'exec-step-1' },
+        ],
+      },
+    ],
+  },
+];
+
+async function seedWorkflows(
+  orgUnitsByKey: Map<string, OrgUnit>,
+  positionMap: Map<string, Position>,
+  userMap: Map<string, User>,
+): Promise<void> {
+  const workflowRepo = AppDataSource.getRepository(Workflow);
+  const stepRepo = AppDataSource.getRepository(WorkflowStep);
+  const raciRepo = AppDataSource.getRepository(RaciAssignment);
+
+  // Sub-flow links are resolved in a second pass: a step can point at a workflow
+  // that appears later in this list (WF-CAPEX step 4 → WF-EXEC).
+  const workflowsByCode = new Map<string, Workflow>();
+  const stepsByWorkflowCode = new Map<string, Map<string, WorkflowStep>>();
+
+  for (const wf of WORKFLOWS) {
+    let workflow = await workflowRepo.findOne({ where: { code: wf.code } });
+    if (!workflow) {
+      workflow = await workflowRepo.save(
+        workflowRepo.create({
+          code: wf.code,
+          name: wf.name,
+          description: wf.description,
+          kind: wf.kind,
+        }),
+      );
+      console.log(`  created workflow ${wf.code}`);
+    }
+
+    const stepsByKey = new Map<string, WorkflowStep>();
+    for (const stepSeed of wf.steps) {
+      let step = await stepRepo.findOne({
+        where: { workflowId: workflow.id, stepOrder: stepSeed.stepOrder },
+      });
+      if (!step) {
+        step = await stepRepo.save(
+          stepRepo.create({
+            workflowId: workflow.id,
+            stepOrder: stepSeed.stepOrder,
+            stepCode: stepSeed.stepCode,
+            stepName: stepSeed.stepName,
+          }),
+        );
+        console.log(`    created step ${stepSeed.stepCode} - ${stepSeed.stepName}`);
+      }
+      stepsByKey.set(stepSeed.key, step);
+    }
+
+    for (const stepSeed of wf.steps) {
+      const step = stepsByKey.get(stepSeed.key)!;
+      for (const assignment of stepSeed.assignments) {
+        const orgUnit = orgUnitsByKey.get(assignment.orgUnitKey)!;
+        const position = assignment.positionCode ? positionMap.get(assignment.positionCode)! : null;
+        const targetUser = assignment.userEmail ? userMap.get(assignment.userEmail)! : null;
+        const fixedRollbackStep = assignment.fixedRollbackStepKey
+          ? stepsByKey.get(assignment.fixedRollbackStepKey)!
+          : null;
+
+        const existing = await raciRepo.findOne({
+          where: {
+            stepId: step.id,
+            orgUnitId: orgUnit.id,
+            positionId: position?.id ?? IsNull(),
+            userId: targetUser?.id ?? IsNull(),
+            roleLetter: assignment.roleLetter,
+          },
+        });
+        if (!existing) {
+          await raciRepo.save(
+            raciRepo.create({
+              stepId: step.id,
+              orgUnitId: orgUnit.id,
+              positionId: position?.id ?? null,
+              userId: targetUser?.id ?? null,
+              roleLetter: assignment.roleLetter,
+              fixedRollbackStepId: fixedRollbackStep?.id ?? null,
+            }),
+          );
+        }
+      }
+    }
+    console.log(`  RACI assignments seeded for ${wf.code}`);
+    workflowsByCode.set(wf.code, workflow);
+    stepsByWorkflowCode.set(wf.code, stepsByKey);
+  }
+
+  // Second pass — now every workflow exists, so sub-flow links can resolve.
+  for (const wf of WORKFLOWS) {
+    for (const stepSeed of wf.steps) {
+      if (!stepSeed.linkedSubFlowCode) continue;
+      const step = stepsByWorkflowCode.get(wf.code)?.get(stepSeed.key);
+      const target = workflowsByCode.get(stepSeed.linkedSubFlowCode);
+      if (!step || !target) continue;
+      if (step.linkedSubFlowId !== target.id) {
+        step.linkedSubFlowId = target.id;
+        await stepRepo.save(step);
+        console.log(`  linked ${wf.code}/${stepSeed.stepCode} → ${stepSeed.linkedSubFlowCode}`);
+      }
+    }
+  }
+}
+
+interface PartSeed {
+  code: string;
+  name: string;
+  orgUnitKey: string;
+  /** Every part points at WF-EXEC so a Work Order can be raised right away. */
+  schedules: Array<{ frequency: MaintenanceFrequency; anchorDate: string }>;
+}
+
+const MAINTENANCE_PARTS: PartSeed[] = [
+  {
+    code: 'PART-CNC-01',
+    name: 'Cụm trục chính máy CNC',
+    orgUnitKey: 'to-ha-tang-mang',
+    schedules: [{ frequency: 'month', anchorDate: '2026-01-15' }],
+  },
+  {
+    code: 'PART-HYD-02',
+    name: 'Lọc bơm thủy lực',
+    orgUnitKey: 'ban-ha-tang',
+    schedules: [{ frequency: 'week', anchorDate: '2026-01-05' }],
+  },
+  {
+    code: 'PART-CNV-03',
+    name: 'Động cơ băng tải',
+    orgUnitKey: 'ban-ha-tang',
+    schedules: [{ frequency: 'quarter', anchorDate: '2026-02-01' }],
+  },
+  {
+    code: 'PART-SEN-04',
+    name: 'Cảm biến nhiệt tủ chính',
+    orgUnitKey: 'to-ha-tang-mang',
+    schedules: [{ frequency: 'year', anchorDate: '2026-03-20' }],
+  },
+  {
+    code: 'PART-AHU-05',
+    name: 'Dàn lạnh AHU khu B',
+    orgUnitKey: 'to-co-khi',
+    schedules: [{ frequency: 'month', anchorDate: '2026-01-12' }],
+  },
+  {
+    code: 'PART-PMP-06',
+    name: 'Bơm nước cứu hoả',
+    orgUnitKey: 'to-dien',
+    schedules: [{ frequency: 'quarter', anchorDate: '2026-02-11' }],
+  },
+  {
+    code: 'PART-GEN-07',
+    name: 'Máy phát điện dự phòng',
+    orgUnitKey: 'ban-co-dien',
+    schedules: [
+      { frequency: 'week', anchorDate: '2026-01-06' },
+      { frequency: 'year', anchorDate: '2026-06-01' },
+    ],
+  },
+];
+
+async function seedMaintenance(orgUnitsByKey: Map<string, OrgUnit>): Promise<void> {
+  const partRepo = AppDataSource.getRepository(MaintenancePart);
+  const scheduleRepo = AppDataSource.getRepository(MaintenanceSchedule);
+  const workflowRepo = AppDataSource.getRepository(Workflow);
+
+  const execFlow = await workflowRepo.findOne({ where: { code: 'WF-EXEC' } });
+  const today = todayInVietnam();
+
+  for (const seed of MAINTENANCE_PARTS) {
+    const orgUnit = orgUnitsByKey.get(seed.orgUnitKey);
+    if (!orgUnit) throw new Error(`Unknown org unit key: ${seed.orgUnitKey}`);
+
+    let part = await partRepo.findOne({ where: { code: seed.code } });
+    if (!part) {
+      part = await partRepo.save(
+        partRepo.create({ code: seed.code, name: seed.name, orgUnitId: orgUnit.id }),
+      );
+      console.log(`  created part ${seed.code}`);
+    }
+
+    for (const sch of seed.schedules) {
+      const existing = await scheduleRepo.findOne({
+        where: { partId: part.id, frequency: sch.frequency },
+      });
+      if (existing) continue;
+      await scheduleRepo.save(
+        scheduleRepo.create({
+          partId: part.id,
+          frequency: sch.frequency,
+          anchorDate: sch.anchorDate,
+          nextDueAt: computeNextDueAt(sch.anchorDate, sch.frequency, today),
+          workflowId: execFlow?.id ?? null,
+        }),
+      );
+      console.log(`  scheduled ${seed.code} every ${sch.frequency}`);
+    }
+  }
+}
+
+async function main() {
+  await AppDataSource.initialize();
+  console.log('Seeding permissions...');
+  const permissionMap = await seedPermissions();
+  console.log('Seeding roles...');
+  const roleMap = await seedRoles(permissionMap);
+  console.log('Seeding demo users...');
+  const userMap = await seedUsers(roleMap);
+  console.log('Seeding org unit types...');
+  const typeMap = await seedOrgUnitTypes();
+  console.log('Seeding org unit tree...');
+  const orgUnitsByKey = await seedOrgUnits(typeMap, userMap);
+  console.log('Seeding positions...');
+  const positionMap = await seedPositions();
+  console.log('Seeding personnel (org unit members)...');
+  await seedMemberships(orgUnitsByKey, userMap, positionMap);
+  console.log('Seeding role letter allowlist...');
+  await seedRoleLetterAllowlist();
+  console.log('Seeding CapEx workflow + RACI assignments...');
+  await seedWorkflows(orgUnitsByKey, positionMap, userMap);
+  console.log('Seeding maintenance parts + schedules...');
+  await seedMaintenance(orgUnitsByKey);
+  console.log(`\nDone. All demo users share the password: ${SEED_PASSWORD}`);
+  await AppDataSource.destroy();
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

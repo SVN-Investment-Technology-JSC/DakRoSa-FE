@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workflowengine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workflowengine
+      POSTGRES_PASSWORD: workflowengine
+      POSTGRES_DB: workflowengine
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Object storage for execution report attachments (BRD 2 US 1.4).
+  # S3-compatible, so swapping to real AWS S3 later is an endpoint/credential
+  # change only — no application code has to move.
+  minio:
+    image: minio/minio:latest
+    container_name: workflowengine-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: workflowengine
+      MINIO_ROOT_PASSWORD: workflowengine
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  minio_data:

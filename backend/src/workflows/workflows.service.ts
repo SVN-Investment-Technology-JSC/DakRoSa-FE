@@ -1,0 +1,199 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Workflow } from './workflow.entity';
+import { WorkflowStep } from './workflow-step.entity';
+import { CreateWorkflowDto } from './dto/create-workflow.dto';
+import { CreateWorkflowStepDto } from './dto/create-workflow-step.dto';
+import { UpdateWorkflowStepDto } from './dto/update-workflow-step.dto';
+import { WorkflowKind } from './workflow-kind';
+
+@Injectable()
+export class WorkflowsService {
+  constructor(
+    @InjectRepository(Workflow)
+    private readonly workflowsRepository: Repository<Workflow>,
+    @InjectRepository(WorkflowStep)
+    private readonly stepsRepository: Repository<WorkflowStep>,
+  ) {}
+
+  findAll(kind?: WorkflowKind): Promise<Workflow[]> {
+    return this.workflowsRepository.find({
+      where: kind ? { kind } : {},
+      order: { name: 'ASC' },
+    });
+  }
+
+  async findOne(id: string): Promise<Workflow> {
+    const workflow = await this.workflowsRepository.findOne({
+      where: { id },
+      relations: [
+        'steps',
+        'steps.raciAssignments',
+        'steps.raciAssignments.orgUnit',
+        'steps.raciAssignments.position',
+        'steps.raciAssignments.user',
+        'steps.raciAssignments.fixedRollbackStep',
+      ],
+    });
+    if (!workflow) {
+      throw new NotFoundException(`Workflow ${id} not found`);
+    }
+    workflow.steps?.sort((a, b) => a.stepOrder - b.stepOrder);
+    return workflow;
+  }
+
+  async getKind(id: string): Promise<WorkflowKind> {
+    const workflow = await this.workflowsRepository.findOne({ where: { id } });
+    if (!workflow) {
+      throw new NotFoundException(`Workflow ${id} not found`);
+    }
+    return workflow.kind;
+  }
+
+  create(dto: CreateWorkflowDto): Promise<Workflow> {
+    const workflow = this.workflowsRepository.create({
+      code: dto.code,
+      name: dto.name,
+      description: dto.description ?? null,
+      kind: dto.kind,
+    });
+    return this.workflowsRepository.save(workflow);
+  }
+
+  async addStep(workflowId: string, dto: CreateWorkflowStepDto): Promise<WorkflowStep> {
+    await this.findOne(workflowId);
+    const step = this.stepsRepository.create({
+      workflowId,
+      stepOrder: dto.stepOrder,
+      stepCode: dto.stepCode,
+      stepName: dto.stepName,
+      icon: dto.icon ?? null,
+      linkedSubFlowId: dto.linkedSubFlowId ?? null,
+    });
+    return this.stepsRepository.save(step);
+  }
+
+  /**
+   * BRD 2 Rule 4 / US 1.5 AC1 — every Node E must be immediately followed by a
+   * Node C, so execution results always hit a gate before the flow moves on.
+   *
+   * Deliberately NOT enforced while editing the matrix (that would make it
+   * impossible to place an E before its C exists). It is enforced where it
+   * actually matters: a workflow that breaks the rule cannot be started.
+   */
+  async validate(workflowId: string): Promise<{ valid: boolean; errors: string[] }> {
+    const workflow = await this.findOne(workflowId);
+    const steps = [...(workflow.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    const errors: string[] = [];
+
+    const hasLetter = (step: WorkflowStep | undefined, letter: string) =>
+      !!step && (step.raciAssignments ?? []).some((a) => a.roleLetter === letter);
+
+    steps.forEach((step, index) => {
+      if (!hasLetter(step, 'E')) return;
+      if (!hasLetter(steps[index + 1], 'C')) {
+        errors.push(
+          `Bước ${step.stepCode} (${step.stepName}) có Node E nhưng bước liền sau không có Node C. ` +
+            'Node E bắt buộc phải được theo sau bởi một Node C.',
+        );
+      }
+    });
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  async assertExecutable(workflowId: string): Promise<void> {
+    const { valid, errors } = await this.validate(workflowId);
+    if (!valid) throw new BadRequestException(errors.join(' '));
+  }
+
+  async updateStep(
+    workflowId: string,
+    stepId: string,
+    dto: UpdateWorkflowStepDto,
+  ): Promise<WorkflowStep> {
+    const step = await this.findStepOrThrow(workflowId, stepId);
+
+    if (dto.linkedSubFlowId) {
+      if (dto.linkedSubFlowId === workflowId) {
+        throw new BadRequestException('Một quy trình không thể tự liên kết vào chính nó.');
+      }
+      // Must exist — findOne throws NotFound otherwise.
+      const subFlow = await this.findOne(dto.linkedSubFlowId);
+      if (subFlow.kind === 'process') {
+        throw new BadRequestException(
+          'Luồng con phải là một Luồng Thực thi, không thể là một Quy trình phê duyệt.',
+        );
+      }
+      await this.assertSubFlowPlacement(workflowId, step);
+    }
+
+    if (dto.stepName !== undefined) step.stepName = dto.stepName;
+    if (dto.icon !== undefined) step.icon = dto.icon;
+    if (dto.linkedSubFlowId !== undefined) step.linkedSubFlowId = dto.linkedSubFlowId;
+
+    return this.stepsRepository.save(step);
+  }
+
+  /**
+   * Where a sub-flow may be attached.
+   *
+   * - **Quy trình (process)**: only on the LAST step, and only if that step
+   *   carries Role A. The meaning is "once this approval workflow is signed
+   *   off, an execution work order appears" — which is only well-defined at the
+   *   final approval, so allowing it mid-workflow would create a work order for
+   *   an approval that can still be rejected and rolled back.
+   * - **Luồng Thực thi (maintenance kinds)**: any step. A sub-flow there is a
+   *   child flow of that particular step, not a hand-off at the end.
+   */
+  private async assertSubFlowPlacement(workflowId: string, step: WorkflowStep): Promise<void> {
+    const workflow = await this.findOne(workflowId);
+    if (workflow.kind !== 'process') return;
+
+    const steps = [...(workflow.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
+    const last = steps[steps.length - 1];
+    if (!last || last.id !== step.id) {
+      throw new BadRequestException(
+        'Với Quy trình, chỉ được gắn Luồng Thực thi vào bước cuối cùng (bước phê duyệt Role A).',
+      );
+    }
+    // `last` comes from findOne(), which eager-loads raciAssignments; the
+    // caller's `step` comes from findStepOrThrow(), which does not.
+    const hasA = (last.raciAssignments ?? []).some((a) => a.roleLetter === 'A');
+    if (!hasA) {
+      throw new BadRequestException(
+        'Bước cuối phải giữ vai trò A (Phê duyệt) trước khi gắn được Luồng Thực thi.',
+      );
+    }
+  }
+
+  async findStepOrThrow(workflowId: string, stepId: string): Promise<WorkflowStep> {
+    const step = await this.stepsRepository.findOne({ where: { id: stepId, workflowId } });
+    if (!step) {
+      throw new NotFoundException(`Step ${stepId} not found on workflow ${workflowId}`);
+    }
+    return step;
+  }
+
+  async findPriorSteps(workflowId: string, stepOrder: number): Promise<WorkflowStep[]> {
+    return this.stepsRepository.find({
+      where: { workflowId },
+      order: { stepOrder: 'ASC' },
+    }).then((steps) => steps.filter((s) => s.stepOrder < stepOrder));
+  }
+
+  async assertPriorStep(workflowId: string, candidateStepId: string, beforeStepOrder: number): Promise<void> {
+    const candidate = await this.stepsRepository.findOne({
+      where: { id: candidateStepId, workflowId },
+    });
+    if (!candidate) {
+      throw new BadRequestException(`Rollback target step ${candidateStepId} not found on this workflow`);
+    }
+    if (candidate.stepOrder >= beforeStepOrder) {
+      throw new BadRequestException(
+        `Rollback target step must precede the current step (order ${candidate.stepOrder} is not before ${beforeStepOrder})`,
+      );
+    }
+  }
+}

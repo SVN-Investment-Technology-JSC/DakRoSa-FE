@@ -1,0 +1,6 @@
+{
+  "name": "WorkflowEngine Enterprise Admin",
+  "description": "Enterprise workflow management system including RACI Matrix Builder, Org Chart, Maintenance Config, Workspace, Submitter, Maintenance Dashboard, and Canvas View.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
