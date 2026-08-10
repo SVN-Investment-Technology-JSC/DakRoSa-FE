@@ -12,7 +12,14 @@ import {
   useWorkflow,
   useWorkflows,
 } from '../hooks/useWorkflows';
-import { useReplaceCellAssignments, useRoleLetterOptions, useValidRollbackTargets } from '../hooks/useRaci';
+import {
+  useETaskSourceOptions,
+  useReplaceCellAssignments,
+  useRoleLetterOptions,
+  useValidRollbackTargets,
+} from '../hooks/useRaci';
+import type { ETaskSource } from '../api/raci';
+import type { EquipmentTaskItem } from '../api/maintenance';
 import {
   ColumnNode,
   buildColumnTree,
@@ -115,10 +122,211 @@ function joinLetters(tags: ApiRaciAssignment[]): string {
   return labels.join(', ');
 }
 
+// --- BRD 3 US 3.1 — dropdown nguồn dữ liệu công việc khi gán Role E ---
+
+interface ETaskSourcePanelProps {
+  workflowId: string;
+  /** Tag E đang có ở ô này, để mở lại đúng lựa chọn cũ thay vì reset về mặc định. */
+  current?: ApiRaciAssignment;
+  isSaving: boolean;
+  onBack: () => void;
+  onSave: (source: ETaskSource, taskList?: EquipmentTaskItem[]) => void;
+}
+
+interface ETaskRow {
+  title: string;
+  /** Chuỗi để ô nhập trống được, thay vì tự nhảy về 0. */
+  durationMinutes: string;
+}
+
+/**
+ * Ba tùy chọn của BRD 3 US 3.1 AC2. "Mặc định theo thiết bị" bị mờ khi chưa có
+ * thiết bị nào gắn luồng này khai JSON danh sách nhiệm vụ (AC3) — backend trả
+ * về cả cờ `enabled` lẫn lý do, nên màn hình không tự suy đoán điều kiện.
+ */
+const ETaskSourcePanel: React.FC<ETaskSourcePanelProps> = ({
+  workflowId,
+  current,
+  isSaving,
+  onBack,
+  onSave,
+}) => {
+  const { data, isLoading } = useETaskSourceOptions(workflowId);
+  const [source, setSource] = useState<ETaskSource>(current?.eTaskSource ?? 'manual');
+  const [rows, setRows] = useState<ETaskRow[]>(() =>
+    (current?.eTaskList ?? []).length > 0
+      ? (current?.eTaskList ?? []).map((t) => ({
+          title: t.title,
+          durationMinutes: String(t.durationMinutes),
+        }))
+      : [{ title: '', durationMinutes: '' }],
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const filled = rows.filter((r) => r.title.trim());
+
+  const submit = () => {
+    if (source !== 'task_list') {
+      setError(null);
+      onSave(source);
+      return;
+    }
+    if (filled.length === 0) {
+      setError('Cần ít nhất một nhiệm vụ.');
+      return;
+    }
+    const invalid = filled.find((r) => !(Number(r.durationMinutes) > 0));
+    if (invalid) {
+      setError(`"${invalid.title}" chưa có thời gian thực hiện hợp lệ (phút, > 0).`);
+      return;
+    }
+    setError(null);
+    onSave(
+      'task_list',
+      filled.map((r) => ({ title: r.title.trim(), durationMinutes: Number(r.durationMinutes) })),
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-[10px] font-bold uppercase text-emerald-700">
+        E — nguồn dữ liệu công việc:
+      </label>
+
+      {isLoading && <p className="text-[10px] text-slate-400">Đang kiểm tra thiết bị…</p>}
+
+      <div className="space-y-1">
+        {(data?.options ?? []).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            disabled={!option.enabled}
+            title={option.disabledReason ?? option.label}
+            onClick={() => setSource(option.value)}
+            className={`flex w-full items-start gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              source === option.value
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'
+            }`}
+          >
+            <span className="material-symbols-outlined mt-px text-[13px] leading-none">
+              {source === option.value ? 'radio_button_checked' : 'radio_button_unchecked'}
+            </span>
+            <span className="min-w-0">
+              {option.label}
+              {!option.enabled && (
+                <span className="mt-0.5 block text-[9px] font-semibold leading-snug text-slate-500">
+                  {option.disabledReason}
+                </span>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {source === 'device_default' && (data?.devices.length ?? 0) > 0 && (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] leading-snug text-emerald-800">
+          Lấy từ JSON của thiết bị sinh ra Lệnh. Đang có{' '}
+          <b>
+            {data?.devices.map((d) => `${d.code} (${d.taskCount})`).join(', ')}
+          </b>{' '}
+          gắn luồng này.
+        </p>
+      )}
+
+      {source === 'manual' && (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] leading-snug text-slate-500">
+          Người giữ Node E tự gõ danh sách lúc phân rã công việc.
+        </p>
+      )}
+
+      {source === 'task_list' && (
+        <div className="space-y-1.5">
+          <div className="custom-scrollbar max-h-36 space-y-1 overflow-y-auto">
+            {rows.map((row, index) => (
+              <div key={index} className="flex items-center gap-1">
+                <input
+                  value={row.title}
+                  onChange={(e) =>
+                    setRows(rows.map((r, i) => (i === index ? { ...r, title: e.target.value } : r)))
+                  }
+                  placeholder={`Nhiệm vụ ${index + 1}`}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium focus:border-emerald-600 focus:outline-none"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={row.durationMinutes}
+                  onChange={(e) =>
+                    setRows(
+                      rows.map((r, i) =>
+                        i === index ? { ...r, durationMinutes: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="phút"
+                  className="w-14 shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-[10px] font-medium focus:border-emerald-600 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRows(rows.filter((_, i) => i !== index))}
+                  title="Xoá dòng"
+                  className="shrink-0 text-slate-400 hover:text-rose-600"
+                >
+                  <span className="material-symbols-outlined text-[13px] leading-none">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setRows([...rows, { title: '', durationMinutes: '' }])}
+            className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 hover:text-emerald-800"
+          >
+            <span className="material-symbols-outlined text-xs">add</span> Thêm nhiệm vụ
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-[10px] font-semibold text-rose-600">{error}</p>}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex-1 rounded-lg border border-slate-200 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50"
+        >
+          Quay lại
+        </button>
+        <button
+          type="button"
+          disabled={isSaving}
+          onClick={submit}
+          className="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {isSaving ? 'Đang lưu…' : 'Gán E'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- Step cell: exactly ONE letter, unless it is an aggregate of deeper levels ---
 
 const CELL_POPOVER_WIDTH = 256;
 const CELL_POPOVER_HEIGHT = 300;
+
+const E_SOURCE_BADGE: Record<ETaskSource, string> = {
+  device_default: 'TB',
+  task_list: 'DS',
+  manual: '',
+};
+
+const E_SOURCE_LABEL: Record<ETaskSource, string> = {
+  device_default: 'Mặc định theo thiết bị',
+  task_list: 'Nhập danh sách công việc',
+  manual: 'Thiết lập thủ công',
+};
 
 interface StepCellProps {
   workflowId: string;
@@ -148,12 +356,14 @@ const StepCell: React.FC<StepCellProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingC, setPendingC] = useState(false);
+  const [pendingE, setPendingE] = useState(false);
   const [rollbackStepId, setRollbackStepId] = useState('');
   const { anchorRef, position: pos } = useFixedPopover<HTMLDivElement>(isOpen, CELL_POPOVER_HEIGHT);
 
   useLayoutEffect(() => {
     if (!isOpen) {
       setPendingC(false);
+      setPendingE(false);
       setRollbackStepId('');
     }
   }, [isOpen]);
@@ -166,12 +376,19 @@ const StepCell: React.FC<StepCellProps> = ({
   const mutation = useReplaceCellAssignments(workflowId);
 
   // One letter per cell: saving REPLACES whatever the cell held.
-  const setLetter = (letter: RoleLetter | null, fixedRollbackStepId?: string) => {
+  const setLetter = (
+    letter: RoleLetter | null,
+    extra?: {
+      fixedRollbackStepId?: string;
+      eTaskSource?: ETaskSource;
+      eTaskList?: EquipmentTaskItem[];
+    },
+  ) => {
     mutation.mutate(
       {
         stepId: step.id,
         ...column.target,
-        tags: letter ? [{ roleLetter: letter, fixedRollbackStepId }] : [],
+        tags: letter ? [{ roleLetter: letter, ...extra }] : [],
       },
       { onSuccess: () => setIsOpen(false) },
     );
@@ -209,12 +426,24 @@ const StepCell: React.FC<StepCellProps> = ({
           <LetterButton
             letters={current.roleLetter}
             tone={LETTER_CHIP[current.roleLetter]}
-            badge={current.roleLetter === 'C' ? current.fixedRollbackStep?.stepCode : undefined}
+            badge={
+              current.roleLetter === 'C'
+                ? current.fixedRollbackStep?.stepCode
+                : current.roleLetter === 'E' && current.eTaskSource
+                  ? E_SOURCE_BADGE[current.eTaskSource] || undefined
+                  : undefined
+            }
             onClick={() => setIsOpen(true)}
             title={
               current.roleLetter === 'C' && current.fixedRollbackStep
                 ? `Từ chối → quay về bước ${current.fixedRollbackStep.stepCode}: ${current.fixedRollbackStep.stepName}`
-                : LETTER_LABEL[current.roleLetter]
+                : current.roleLetter === 'E'
+                  ? `Nguồn công việc: ${E_SOURCE_LABEL[current.eTaskSource ?? 'manual']}${
+                      current.eTaskSource === 'task_list'
+                        ? ` (${current.eTaskList?.length ?? 0} nhiệm vụ)`
+                        : ''
+                    }`
+                  : LETTER_LABEL[current.roleLetter]
             }
           />
         ) : (
@@ -270,7 +499,17 @@ const StepCell: React.FC<StepCellProps> = ({
               </p>
             )}
 
-            {!pendingC ? (
+            {pendingE ? (
+              <ETaskSourcePanel
+                workflowId={workflowId}
+                current={current?.roleLetter === 'E' ? current : undefined}
+                isSaving={mutation.isPending}
+                onBack={() => setPendingE(false)}
+                onSave={(eTaskSource, eTaskList) =>
+                  setLetter('E', { eTaskSource, eTaskList })
+                }
+              />
+            ) : !pendingC ? (
               <>
                 <div className="grid grid-cols-3 gap-1.5">
                   {(letterOptions ?? []).map((l) => {
@@ -282,7 +521,13 @@ const StepCell: React.FC<StepCellProps> = ({
                         type="button"
                         disabled={blocked || mutation.isPending}
                         title={blocked ? 'Bước này đã có C ở cột khác' : LETTER_LABEL[l]}
-                        onClick={() => (l === 'C' ? setPendingC(true) : setLetter(l))}
+                        onClick={() =>
+                          l === 'C'
+                            ? setPendingC(true)
+                            : l === 'E'
+                              ? setPendingE(true)
+                              : setLetter(l)
+                        }
                         className={`rounded-lg border py-2 font-mono text-sm font-bold transition-all disabled:cursor-not-allowed disabled:opacity-30 ${LETTER_CHIP[l]} ${
                           active ? 'ring-2 ring-blue-500 ring-offset-1' : 'hover:shadow-sm'
                         }`}
@@ -332,7 +577,7 @@ const StepCell: React.FC<StepCellProps> = ({
                   <button
                     type="button"
                     disabled={!rollbackStepId || mutation.isPending}
-                    onClick={() => setLetter('C', rollbackStepId)}
+                    onClick={() => setLetter('C', { fixedRollbackStepId: rollbackStepId })}
                     className="flex-1 rounded-lg bg-purple-600 py-1.5 text-[11px] font-bold text-white hover:bg-purple-700 disabled:opacity-50"
                   >
                     {mutation.isPending ? 'Đang lưu…' : 'Gán C'}

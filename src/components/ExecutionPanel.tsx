@@ -6,6 +6,7 @@ import {
   useReplaceSubtasks,
   useSubmitSubtask,
   useSubtasks,
+  useSuggestedTasks,
   useUploadAttachment,
 } from '../hooks/useExecution';
 import { isActionableStepStatus, type ApiTaskInstance, type ApiTaskStepInstance } from '../api/tasks';
@@ -48,12 +49,20 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ task, step }) =>
     isNodeEOwner ? step.id : undefined,
   );
   const replaceSubtasks = useReplaceSubtasks(task.id, step.id);
+  // BRD 3 US 3.1 AC3 — đầu việc mà bước này phải giao, theo nguồn đã chốt lúc
+  // thiết kế luồng ("Mặc định theo thiết bị" / "Nhập danh sách công việc").
+  const { data: suggested } = useSuggestedTasks(
+    isNodeEOwner ? task.id : undefined,
+    isNodeEOwner ? step.id : undefined,
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<DraftRow[]>([]);
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const canEdit = isNodeEOwner && isActionableStepStatus(step.status);
+  const suggestedTasks = suggested?.tasks ?? [];
+  const isPrescribed = (suggested?.source ?? 'manual') !== 'manual';
 
   // Anyone already given an E(x) can stay an option even if they aren't in the
   // candidate list any more (roster changed since the breakdown was made).
@@ -67,6 +76,10 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ task, step }) =>
       .map((s) => ({ id: s.assigneeUserId, label: s.assignee?.fullName ?? s.assigneeUserId })),
   ];
 
+  /** Các đầu việc cấu hình sẵn, đổ thành dòng nháp — người nhận vẫn phải tự chọn. */
+  const rowsFromSuggested = (): DraftRow[] =>
+    suggestedTasks.map((t) => ({ assigneeUserId: '', title: t.title, weight: '' }));
+
   const startEditing = () => {
     setDraft(
       subtasks.length > 0
@@ -75,7 +88,11 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ task, step }) =>
             title: s.title,
             weight: String(s.weight),
           }))
-        : [{ assigneeUserId: '', title: '', weight: '' }],
+        : // Chưa phân rã lần nào mà luồng đã quy định sẵn đầu việc → đổ luôn,
+          // đỡ phải gõ lại đúng danh sách đã khai ở Ma trận bảo trì.
+          suggestedTasks.length > 0
+          ? rowsFromSuggested()
+          : [{ assigneeUserId: '', title: '', weight: '' }],
     );
     setIsEditing(true);
     setFeedback(null);
@@ -131,6 +148,46 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ task, step }) =>
           </button>
         )}
       </div>
+
+      {/* BRD 3 US 3.1 — nguồn đầu việc đã chốt cho bước E này. */}
+      {isNodeEOwner && isPrescribed && (
+        <div
+          className={`rounded-xl border px-3 py-2 text-[11px] font-semibold ${
+            suggested?.unavailableReason
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-violet-200 bg-violet-50 text-violet-800'
+          }`}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">
+              {suggested?.source === 'device_default' ? 'precision_manufacturing' : 'list_alt'}
+            </span>
+            <span>
+              {suggested?.source === 'device_default'
+                ? 'Đầu việc lấy mặc định theo thiết bị'
+                : 'Đầu việc theo danh sách cấu hình trong luồng'}
+              {suggestedTasks.length > 0 && ` · ${suggestedTasks.length} nhiệm vụ`}
+            </span>
+          </div>
+          {suggested?.unavailableReason && (
+            <p className="mt-1 font-medium leading-snug">{suggested.unavailableReason}</p>
+          )}
+          {suggestedTasks.length > 0 && (
+            <ol className="mt-1.5 space-y-0.5 font-medium">
+              {suggestedTasks.map((t, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {i + 1}. {t.title}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] opacity-70">
+                    {t.durationMinutes} phút
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
 
       {feedback && (
         <div
@@ -196,12 +253,24 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ task, step }) =>
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <button
-              onClick={() => setDraft([...draft, { assigneeUserId: '', title: '', weight: '' }])}
-              className="text-[11px] font-bold text-violet-600 hover:text-violet-700 flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">add</span> Thêm công việc con
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDraft([...draft, { assigneeUserId: '', title: '', weight: '' }])}
+                className="text-[11px] font-bold text-violet-600 hover:text-violet-700 flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-sm">add</span> Thêm công việc con
+              </button>
+              {suggestedTasks.length > 0 && (
+                <button
+                  onClick={() => setDraft(rowsFromSuggested())}
+                  title="Thay danh sách đang sửa bằng đúng các đầu việc đã cấu hình"
+                  className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-violet-700"
+                >
+                  <span className="material-symbols-outlined text-sm">restart_alt</span> Nạp lại từ
+                  cấu hình
+                </button>
+              )}
+            </div>
             <span
               className={`text-[11px] font-bold ${
                 allWeighted && Math.abs(draftTotal - 100) > 0.001 ? 'text-rose-600' : 'text-slate-500'

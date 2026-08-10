@@ -44,6 +44,15 @@ export class ExecutionController {
     return this.executionService.findBreakdownCandidates(taskId, stepId, user.sub);
   }
 
+  /** BRD 3 US 3.1 AC3 — đầu việc gợi ý theo nguồn đã chốt cho Node E. */
+  @Get('suggested')
+  findSuggested(
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+  ) {
+    return this.executionService.getSuggestedTasks(taskId, stepId);
+  }
+
   @Put()
   replace(
     @Req() req: Request,

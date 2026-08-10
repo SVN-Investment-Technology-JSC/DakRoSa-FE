@@ -25,6 +25,12 @@ export interface ApiRaciAssignment {
   fixedRollbackStepId?: string | null;
   /** Resolved rollback step (Role C only) — rendered as the C[n] badge. */
   fixedRollbackStep?: { id: string; stepCode: string; stepName: string } | null;
+  /**
+   * BRD 3 US 3.1 — nguồn dữ liệu công việc, chỉ có nghĩa với tag `E`.
+   * Rỗng = "Thiết lập thủ công" (hành vi mặc định có từ trước BRD 3).
+   */
+  eTaskSource?: 'device_default' | 'task_list' | 'manual' | null;
+  eTaskList?: Array<{ title: string; durationMinutes: number; note?: string }> | null;
 }
 
 export interface ApiWorkflowStep {

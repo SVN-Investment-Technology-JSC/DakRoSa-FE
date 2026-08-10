@@ -14,6 +14,9 @@ import { WorkflowStep } from '../workflows/workflow-step.entity';
 import { TaskStepAssignee } from './task-step-assignee.entity';
 import { TASK_STEP_STATUSES } from './task-status';
 import type { TaskStepStatus } from './task-status';
+import { E_TASK_SOURCES } from '../raci/e-task-source';
+import type { ETaskSource } from '../raci/e-task-source';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 @Entity('task_step_instances')
 @Index(['taskId', 'stepOrder'], { unique: true })
@@ -52,6 +55,17 @@ export class TaskStepInstance {
 
   @Column({ name: 'is_derivative', default: false })
   isDerivative: boolean;
+
+  /**
+   * BRD 3 US 3.1 — cấu hình nguồn công việc của Node E, đông cứng lại từ tag `E`
+   * của bước mẫu ngay lúc tạo đơn. Đọc lại từ template lúc chạy sẽ khiến một
+   * đơn đang dở dang đổi cách giao việc chỉ vì ai đó sửa ma trận.
+   */
+  @Column({ name: 'e_task_source', type: 'enum', enum: E_TASK_SOURCES, nullable: true })
+  eTaskSource?: ETaskSource | null;
+
+  @Column({ name: 'e_task_list', type: 'jsonb', nullable: true })
+  eTaskList?: EquipmentTaskTemplate | null;
 
   @Column({ name: 'linked_sub_flow_task_id', type: 'uuid', nullable: true })
   linkedSubFlowTaskId?: string | null;

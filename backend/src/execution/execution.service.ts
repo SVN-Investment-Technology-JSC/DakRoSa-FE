@@ -19,6 +19,10 @@ import { completeStepAndAdvance } from '../tasks/step-progression';
 import { isActionableStepStatus } from '../tasks/task-status';
 import { ReplaceSubtasksDto } from './dto/replace-subtasks.dto';
 import { distributeWeights, isTotalExact, sumWeights } from './weights';
+import { DEFAULT_E_TASK_SOURCE } from '../raci/e-task-source';
+import type { ETaskSource } from '../raci/e-task-source';
+import { isNonEmptyTemplate } from '../maintenance/asset';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 @Injectable()
 export class ExecutionService {
@@ -58,6 +62,51 @@ export class ExecutionService {
     await this.findStepOrThrow(taskId, stepId);
     await this.assertNodeEOwner(stepId, callerUserId);
     return this.orgUnitsService.findSubordinates(callerUserId);
+  }
+
+  /**
+   * BRD 3 US 3.1 AC3 — các đầu việc mà bước E này phải giao, theo đúng nguồn đã
+   * chốt lúc thiết kế luồng.
+   *
+   * Chỉ TRẢ VỀ gợi ý, không tự tạo `E(x)`: mỗi đầu việc còn phải gắn với một
+   * người cụ thể, mà chuyện đó chỉ người giữ Node E mới quyết được. Phân rã vẫn
+   * đi qua đúng một cửa là `replaceSubtasks`.
+   */
+  async getSuggestedTasks(
+    taskId: string,
+    stepId: string,
+  ): Promise<{
+    source: ETaskSource;
+    tasks: EquipmentTaskTemplate;
+    deviceName?: string | null;
+    unavailableReason?: string;
+  }> {
+    const step = await this.findStepOrThrow(taskId, stepId);
+    const source = step.eTaskSource ?? DEFAULT_E_TASK_SOURCE;
+
+    if (source === 'task_list') {
+      return { source, tasks: step.eTaskList ?? [] };
+    }
+
+    if (source === 'device_default') {
+      const task = await this.tasksService.findOne(taskId);
+      const template = task.equipmentTaskTemplate;
+      if (!isNonEmptyTemplate(template)) {
+        // Cấu hình từng hợp lệ lúc thiết kế (có thiết bị khác đã khai JSON)
+        // nhưng Lệnh cụ thể này lại rơi vào thiết bị chưa khai. Nói rõ ra thay
+        // vì trả mảng rỗng, để người giữ E biết là phải nhập tay chứ không
+        // tưởng hệ thống hỏng.
+        return {
+          source,
+          tasks: [],
+          unavailableReason:
+            'Lệnh công việc này không mang theo danh sách nhiệm vụ của thiết bị. Hãy phân rã thủ công, hoặc khai Danh sách nhiệm vụ cho thiết bị ở Ma trận bảo trì rồi tạo lại Lệnh.',
+        };
+      }
+      return { source, tasks: template, deviceName: task.title };
+    }
+
+    return { source, tasks: [] };
   }
 
   /**

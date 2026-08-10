@@ -25,6 +25,8 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   const adminItems: Array<{ id: NavTab; label: string; icon: string }> = [
     { id: 'raci', label: 'Ma trận RCSI (RACI)', icon: 'format_list_bulleted' },
     { id: 'org-chart', label: 'Sơ đồ Tổ chức', icon: 'corporate_fare' },
+    // BRD 3 US 1.1 AC1 — bổ sung "Sơ đồ thiết bị" vào thanh điều hướng.
+    { id: 'asset-tree', label: 'Sơ đồ thiết bị', icon: 'account_tree' },
     { id: 'maintenance-dashboard', label: 'Bảng Bảo trì & Cảnh báo', icon: 'engineering' },
   ];
 

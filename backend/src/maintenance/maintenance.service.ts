@@ -13,7 +13,15 @@ import { MaintenanceTicket } from './maintenance-ticket.entity';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
 import { SetSchedulesDto } from './dto/set-schedules.dto';
+import { SetTaskTemplateDto } from './dto/set-task-template.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import {
+  ASSET_KIND_LABEL,
+  isValidChildKind,
+  isNonEmptyTemplate,
+  MAX_PART_DEPTH,
+} from './asset';
+import type { AssetKind } from './asset';
 import {
   addInterval,
   computeNextDueAt,
@@ -71,11 +79,68 @@ export class MaintenanceService {
     return part;
   }
 
+  /**
+   * BRD 3 Epic 1 — cây cấu trúc tài sản, lồng theo `parentId`.
+   *
+   * Nạp một phát cả bảng rồi ghép cây trong bộ nhớ thay vì đệ quy xuống DB:
+   * số node thiết bị của một nhà máy nằm ở thang trăm, nên một query phẳng rẻ
+   * hơn hẳn N+1 query theo tầng.
+   */
+  async findPartsTree(): Promise<MaintenancePart[]> {
+    const all = await this.partsRepository.find({
+      relations: ['orgUnit', 'schedules'],
+      order: { code: 'ASC' },
+    });
+
+    const byId = new Map(all.map((p) => [p.id, Object.assign(p, { children: [] as MaintenancePart[] })]));
+    const roots: MaintenancePart[] = [];
+    for (const part of byId.values()) {
+      const parent = part.parentId ? byId.get(part.parentId) : undefined;
+      if (parent) parent.children.push(part);
+      else roots.push(part);
+    }
+    return roots;
+  }
+
   async createPart(dto: CreatePartDto): Promise<MaintenancePart> {
-    await this.orgUnitsService.findOne(dto.orgUnitId); // 404s if the unit is bogus
+    if (dto.orgUnitId) await this.orgUnitsService.findOne(dto.orgUnitId); // 404s if the unit is bogus
     const existing = await this.partsRepository.findOne({ where: { code: dto.code } });
     if (existing) throw new BadRequestException(`Mã thiết bị "${dto.code}" đã tồn tại.`);
-    const saved = await this.partsRepository.save(this.partsRepository.create(dto));
+
+    // `part` là mặc định để lối tạo thiết bị có từ trước BRD 3 (chỉ gửi
+    // code/name/orgUnitId) vẫn tạo ra một node hợp lệ, đứng ở gốc cây.
+    const assetKind: AssetKind = dto.assetKind ?? 'part';
+    const parent = dto.parentId ? await this.findPart(dto.parentId) : null;
+
+    if (parent && !isValidChildKind(parent.assetKind, assetKind)) {
+      throw new BadRequestException(
+        `Không thể đặt "${ASSET_KIND_LABEL[assetKind]}" bên dưới "${ASSET_KIND_LABEL[parent.assetKind]}".`,
+      );
+    }
+    // Node gốc chỉ được là Công ty — TRỪ `part` đứng lẻ, vốn là hình dạng của
+    // mọi thiết bị đã seed trước BRD 3.
+    if (!parent && assetKind !== 'company' && assetKind !== 'part') {
+      throw new BadRequestException(
+        `"${ASSET_KIND_LABEL[assetKind]}" phải nằm dưới một node cha. Chỉ Công ty mới đứng ở gốc cây.`,
+      );
+    }
+    if (parent && assetKind === 'part') {
+      const depth = await this.partDepth(parent);
+      if (depth >= MAX_PART_DEPTH) {
+        throw new BadRequestException(
+          `Chỉ được lồng tối đa ${MAX_PART_DEPTH} cấp Bộ phận dưới một Phân hệ thiết bị chính.`,
+        );
+      }
+    }
+
+    const saved = await this.partsRepository.save(
+      this.partsRepository.create({
+        ...dto,
+        assetKind,
+        parentId: dto.parentId ?? null,
+        orgUnitId: dto.orgUnitId ?? null,
+      }),
+    );
     return this.findPart(saved.id);
   }
 
@@ -84,6 +149,129 @@ export class MaintenanceService {
     if (dto.orgUnitId) await this.orgUnitsService.findOne(dto.orgUnitId);
     await this.partsRepository.update(part.id, dto);
     return this.findPart(part.id);
+  }
+
+  /**
+   * Xoá một node và cả nhánh dưới nó (FK `parent_id` là ON DELETE CASCADE).
+   *
+   * Chặn khi nhánh còn phiếu bảo trì: phiếu là bằng chứng lịch sử, và
+   * `maintenance_tickets.part_id` không cascade — xoá sẽ vỡ ràng buộc khoá
+   * ngoại chứ không im lặng mất dữ liệu.
+   */
+  async deletePart(id: string): Promise<{ deleted: number }> {
+    const part = await this.findPart(id);
+    const branch = await this.collectBranchIds(part.id);
+
+    const ticketCount = await this.ticketsRepository.count({ where: { partId: In(branch) } });
+    if (ticketCount > 0) {
+      throw new BadRequestException(
+        `Không xoá được: nhánh này còn ${ticketCount} phiếu bảo trì trong lịch sử. Hãy tắt hoạt động thay vì xoá.`,
+      );
+    }
+
+    await this.partsRepository.delete({ id: part.id });
+    return { deleted: branch.length };
+  }
+
+  /**
+   * BRD 3 US 2.1 AC2 — khai "Danh sách nhiệm vụ" + "Thời gian thực hiện" cho
+   * một thiết bị, lưu nguyên dạng JSON gắn với ID thiết bị đó.
+   */
+  async setTaskTemplate(partId: string, dto: SetTaskTemplateDto): Promise<MaintenancePart> {
+    const part = await this.findPart(partId);
+
+    const duplicate = dto.tasks.find(
+      (t, i) => dto.tasks.findIndex((o) => o.title.trim() === t.title.trim()) !== i,
+    );
+    if (duplicate) {
+      throw new BadRequestException(`Nhiệm vụ "${duplicate.title}" bị khai hai lần.`);
+    }
+
+    await this.partsRepository.update(part.id, {
+      // Mảng rỗng lưu thành NULL để "chưa cấu hình" chỉ có đúng một biểu diễn —
+      // đây là thứ mà validation của Role E (US 3.1 AC3) hỏi tới.
+      taskTemplate: dto.tasks.length > 0 ? dto.tasks : null,
+    });
+    return this.findPart(part.id);
+  }
+
+  /**
+   * BRD 3 US 3.1 AC3 — các thiết bị đang trỏ vào luồng này VÀ đã khai JSON
+   * danh sách nhiệm vụ. Rỗng ⇒ tùy chọn "Mặc định theo thiết bị" bị vô hiệu ở
+   * màn hình thiết kế ma trận.
+   */
+  async findDeviceTemplateSources(workflowId: string): Promise<
+    Array<{ id: string; code: string; name: string; taskCount: number }>
+  > {
+    const schedules = await this.schedulesRepository.find({
+      where: { workflowId },
+      relations: ['part'],
+    });
+
+    const byPartId = new Map<string, MaintenancePart>();
+    for (const schedule of schedules) {
+      if (schedule.part && isNonEmptyTemplate(schedule.part.taskTemplate)) {
+        byPartId.set(schedule.part.id, schedule.part);
+      }
+    }
+    return [...byPartId.values()].map((part) => ({
+      id: part.id,
+      code: part.code,
+      name: part.name,
+      taskCount: part.taskTemplate?.length ?? 0,
+    }));
+  }
+
+  /**
+   * Đơn vị phụ trách thực sự của một thiết bị: của chính nó, hoặc của tổ tiên
+   * gần nhất có khai. Một chi tiết nhỏ trong cây thường không tự khai đơn vị —
+   * nó thuộc về đơn vị quản lý cả phân hệ chứa nó.
+   */
+  async resolveOrgUnitId(partId: string): Promise<string | null> {
+    let current: MaintenancePart | null = await this.partsRepository.findOne({
+      where: { id: partId },
+    });
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      if (current.orgUnitId) return current.orgUnitId;
+      seen.add(current.id);
+      if (!current.parentId) return null;
+      current = await this.partsRepository.findOne({ where: { id: current.parentId } });
+    }
+    return null;
+  }
+
+  /** Số tầng `part` đã lồng tính tới `node` (node là `part` thì tính cả nó). */
+  private async partDepth(node: MaintenancePart): Promise<number> {
+    let depth = 0;
+    let current: MaintenancePart | null = node;
+    const seen = new Set<string>();
+    while (current && current.assetKind === 'part' && !seen.has(current.id)) {
+      depth++;
+      seen.add(current.id);
+      current = current.parentId
+        ? await this.partsRepository.findOne({ where: { id: current.parentId } })
+        : null;
+    }
+    return depth;
+  }
+
+  private async collectBranchIds(rootId: string): Promise<string[]> {
+    const all = await this.partsRepository.find({ select: ['id', 'parentId'] });
+    const childrenOf = new Map<string, string[]>();
+    for (const part of all) {
+      if (!part.parentId) continue;
+      childrenOf.set(part.parentId, [...(childrenOf.get(part.parentId) ?? []), part.id]);
+    }
+    const ids: string[] = [];
+    const stack = [rootId];
+    while (stack.length > 0) {
+      const id = stack.pop() as string;
+      if (ids.includes(id)) continue;
+      ids.push(id);
+      stack.push(...(childrenOf.get(id) ?? []));
+    }
+    return ids;
   }
 
   // ------------------------------------------------------------ Schedules
@@ -96,6 +284,15 @@ export class MaintenanceService {
   async setSchedules(partId: string, dto: SetSchedulesDto): Promise<MaintenancePart> {
     const part = await this.findPart(partId);
     const today = todayInVietnam();
+
+    // Phiếu nhắc phải gửi được tới một người thật, và Lệnh công việc phải mở
+    // được dưới một đơn vị thật. Thiết bị không suy ra nổi đơn vị phụ trách
+    // (kể cả kế thừa từ cấp trên trong cây) sẽ tạo ra lịch chạy vào hư không.
+    if (dto.schedules.length > 0 && !(await this.resolveOrgUnitId(part.id))) {
+      throw new BadRequestException(
+        `Thiết bị "${part.name}" chưa có đơn vị phụ trách (kể cả kế thừa từ cấp trên trong Sơ đồ thiết bị). Hãy gán đơn vị trước khi lên lịch bảo trì.`,
+      );
+    }
 
     const duplicate = dto.schedules.find(
       (s, i) => dto.schedules.findIndex((o) => o.frequency === s.frequency) !== i,
@@ -215,13 +412,20 @@ export class MaintenanceService {
       );
     }
 
+    const orgUnitId = await this.resolveOrgUnitId(ticket.partId);
+    if (!orgUnitId) {
+      throw new BadRequestException(
+        `Thiết bị "${ticket.part.name}" chưa có đơn vị phụ trách, không mở được Lệnh công việc.`,
+      );
+    }
+
     const task = await this.tasksService.create(
       {
         workflowId,
         title: `[Bảo trì] ${ticket.part.name}`,
         referenceCode: ticket.ticketNumber,
         referenceTitle: `Phiếu bảo trì ${ticket.part.code}`,
-        orgUnitId: ticket.part.orgUnitId,
+        orgUnitId,
         priority: ticket.priority,
         dueDate: ticket.dueDate,
         description: ticket.note ?? `Bảo trì định kỳ: ${ticket.part.name}`,
@@ -231,6 +435,11 @@ export class MaintenanceService {
         origin: 'work_order',
         parentMaintenanceTicketId: ticket.id,
         nodeEOwnerUserId: callerUserId,
+        // BRD 3 US 2.1 AC2 — payload của Lệnh công việc đính kèm nguyên chuỗi
+        // JSON đã khai cho thiết bị. Chép sang chứ không tham chiếu: sửa cấu
+        // hình thiết bị sau này không được đổi nội dung Lệnh đã phát ra.
+        maintenancePartId: ticket.partId,
+        equipmentTaskTemplate: ticket.part.taskTemplate ?? null,
       },
     );
 
@@ -239,8 +448,16 @@ export class MaintenanceService {
       taskId: task.id,
       actorUserId: callerUserId,
       action: 'task.work_order_created',
-      summary: `Lệnh công việc mở từ phiếu bảo trì ${ticket.ticketNumber} (${ticket.part.name}, hạn ${ticket.dueDate}). Người tạo giữ Node E.`,
-      metadata: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
+      summary:
+        `Lệnh công việc mở từ phiếu bảo trì ${ticket.ticketNumber} (${ticket.part.name}, hạn ${ticket.dueDate}). Người tạo giữ Node E.` +
+        (isNonEmptyTemplate(ticket.part.taskTemplate)
+          ? ` Đính kèm ${ticket.part.taskTemplate.length} nhiệm vụ cấu hình sẵn của thiết bị.`
+          : ''),
+      metadata: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        equipmentTaskCount: ticket.part.taskTemplate?.length ?? 0,
+      },
     });
     return task;
   }
@@ -299,9 +516,16 @@ export class MaintenanceService {
     });
     if (existing) return null; // already reminded for this cycle
 
-    const recipients = await this.orgUnitsService.resolveAssignees({
-      orgUnitId: schedule.part.orgUnitId,
-    });
+    // Đơn vị suy ra từ cây, không đọc thẳng cột: một chi tiết nằm sâu thường
+    // không tự khai đơn vị mà thừa hưởng của phân hệ chứa nó.
+    const orgUnitId = await this.resolveOrgUnitId(schedule.partId);
+    if (!orgUnitId) {
+      this.logger.warn(
+        `Bỏ qua lịch ${schedule.id} (${schedule.part.name}): không suy ra được đơn vị phụ trách.`,
+      );
+      return null;
+    }
+    const recipients = await this.orgUnitsService.resolveAssignees({ orgUnitId });
 
     try {
       return await this.dataSource.transaction(async (manager) => {

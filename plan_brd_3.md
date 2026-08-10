@@ -209,3 +209,46 @@ Dưới đây là chi tiết văn bản được trích xuất (OCR) từ 2 hìn
 **Khung thông tin công việc theo thiết bị **
     Được lưu theo cấu trúc json để dễ xuất/đọc dư liệu, trích xuất task
 
+
+---
+
+## Nhật ký triển khai (cập nhật khi code)
+
+Toàn bộ 4 Epic của BRD 3 **đã triển khai xong** và kiểm chứng end-to-end trên DB/API thật. Không có tính năng nào của BRD 1/BRD 2 bị bỏ.
+
+### Quyết định kiến trúc
+
+- **Cây tài sản lồng ngay trong `maintenance_parts`** (thêm `parent_id` + `asset_kind`), không tách bảng `assets` riêng. Lý do: mọi thứ đã khoá theo `maintenance_parts.id` (lịch bảo trì, phiếu nhắc, Lệnh công việc), nên tách bảng chỉ thêm một tầng join mà không đổi lại được gì. Thiết bị seed từ BRD 2 mặc định thành `asset_kind = 'part'` đứng ở gốc → chạy y nguyên.
+- **`maintenance_parts.org_unit_id` chuyển sang nullable.** Node Công ty / Nhà máy không nhất thiết thuộc tổ nào. Chỗ nào cần đơn vị thật (`setSchedules`, `raiseTicket`, `createWorkOrder`) gọi `MaintenanceService.resolveOrgUnitId`, leo ngược cây tìm tổ tiên gần nhất có khai; không tìm ra thì chặn kèm lý do thay vì tạo lịch chạy vào hư không.
+- **`manual` lưu thành NULL** ở `raci_assignments.e_task_source`. Tag E cũ (chưa từng khai gì) và tag E chọn "Thiết lập thủ công" là cùng một hành vi, nên không để chúng thành hai trạng thái khác nhau.
+- **Cấu hình Role E đông cứng vào `task_step_instances` lúc tạo đơn** (`e_task_source` + `e_task_list`), và JSON thiết bị **chép** vào `task_instances.equipment_task_template`. Đọc lại từ template lúc chạy sẽ khiến một đơn dở dang đổi cách giao việc chỉ vì ai đó sửa ma trận.
+- **Validation "Mặc định theo thiết bị"** (US 3.1 AC3) đặt lại thành câu hỏi trả lời được lúc thiết kế: *có thiết bị nào trỏ vào luồng này và đã khai JSON chưa*. Backend trả cả cờ `enabled` lẫn `disabledReason` qua `GET /workflows/:id/e-task-source-options`, nên giao diện không tự suy đoán điều kiện. Kiểm lại lần nữa lúc lưu — giao diện không phải là hàng rào.
+
+### Thay đổi schema — migration `AssetHierarchyAndTaskTemplate1786400512004` (viết tay)
+
+| Bảng | Cột thêm |
+|---|---|
+| `maintenance_parts` | `parent_id`, `asset_kind`, `symbol`, `condition`, `location`, `specifications`, `manufacturer`, `task_template` (jsonb); `org_unit_id` → nullable |
+| `task_instances` | `maintenance_part_id`, `equipment_task_template` (jsonb) |
+| `raci_assignments` | `e_task_source`, `e_task_list` (jsonb) + CHECK chỉ cho phép trên tag `E` |
+| `task_step_instances` | `e_task_source`, `e_task_list` (jsonb) |
+
+> Viết tay vì cùng lý do đã ghi ở `MaintenanceModule1786322987516`: differ của TypeORM không đọc được hai index raw-SQL trên `raci_assignments` nên lần nào cũng đòi DROP. File này cũng đặt tên tay cho CHECK constraint. **Phải soi bằng mắt trước khi chạy `migration:generate`.**
+
+### Endpoint mới
+
+- `GET /maintenance-parts/tree` — cây tài sản lồng sẵn
+- `DELETE /maintenance-parts/:id` — xoá cả nhánh, chặn khi còn phiếu bảo trì
+- `PUT /maintenance-parts/:id/task-template` — khai JSON danh sách nhiệm vụ
+- `GET /workflows/:id/e-task-source-options` — 3 tùy chọn + tính khả dụng của `device_default`
+- `GET /tasks/:taskId/steps/:stepId/subtasks/suggested` — đầu việc gợi ý cho Node E theo nguồn đã chốt
+
+### Giao diện
+
+`AssetTreeView.tsx` (mới) · `MaintenanceConfigView` (+ modal "Thêm thông tin công việc", thụt lề theo cây) · `RsacieMatrixView` (+ `ETaskSourcePanel`, badge `TB`/`DS` trên ô E) · `ExecutionPanel` (+ khung nguồn công việc, đổ sẵn dòng phân rã, nút "Nạp lại từ cấu hình") · `SideNavBar`/`App` (+ tab `asset-tree`, nằm trong khu Admin).
+
+### Đã kiểm chứng
+
+`tsc --noEmit` sạch cả hai phía; `npm test` 77/77 pass (thêm 3 test mới cho BRD 3 trong `maintenance.service.spec.ts`); migration + seed chạy trên Postgres thật. Kiểm qua `curl`: lưu/gỡ JSON và chặn trùng tên + thời gian ≤ 0; chặn đặt sai cấp trong cây; chặn Nhà máy ở gốc; chặn lồng quá 5 cấp `part`; xoá nhánh cascade; 3 tùy chọn Role E gồm cả trạng thái mờ và chặn phía server; **chuỗi đầy đủ**: quét bảo trì → phiếu → Tạo Lệnh công việc → JSON 4 nhiệm vụ của Buồng xoắn đi vào `equipmentTaskTemplate` → `GET .../suggested` trả đúng 4 việc → phân rã `E(x)` tổng trọng số 100; và nhánh biên `device_default` + thiết bị không có JSON → trả `unavailableReason` thay vì mảng rỗng câm.
+
+**Chưa làm**: chuyển nhánh (đổi `parentId` của một node đã tạo) — cùng lý do với reparenting của Sơ đồ Tổ chức, là thao tác riêng chứ không phải một field của form sửa. Tạo/xoá đã đủ để dựng cây.

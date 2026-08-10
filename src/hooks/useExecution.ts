@@ -3,6 +3,7 @@ import {
   getAttachmentUrl,
   getBreakdownCandidates,
   getSubtasks,
+  getSuggestedTasks,
   replaceSubtasks,
   submitSubtask,
   uploadAttachment,
@@ -22,6 +23,15 @@ export function useBreakdownCandidates(taskId: string | undefined, stepId: strin
   return useQuery({
     queryKey: ['tasks', taskId, 'steps', stepId, 'breakdown-candidates'],
     queryFn: () => getBreakdownCandidates(taskId as string, stepId as string),
+    enabled: !!taskId && !!stepId,
+  });
+}
+
+/** BRD 3 US 3.1 AC3 — đầu việc gợi ý cho bước E, theo nguồn đã chốt. */
+export function useSuggestedTasks(taskId: string | undefined, stepId: string | undefined) {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'steps', stepId, 'suggested-tasks'],
+    queryFn: () => getSuggestedTasks(taskId as string, stepId as string),
     enabled: !!taskId && !!stepId,
   });
 }

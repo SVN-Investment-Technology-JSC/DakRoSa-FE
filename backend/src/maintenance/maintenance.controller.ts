@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -16,6 +17,7 @@ import { MaintenanceService } from './maintenance.service';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
 import { SetSchedulesDto } from './dto/set-schedules.dto';
+import { SetTaskTemplateDto } from './dto/set-task-template.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -34,6 +36,12 @@ export class MaintenanceController {
     return this.maintenanceService.findParts();
   }
 
+  /** BRD 3 Epic 1 — cây cấu trúc tài sản cho màn hình "Sơ đồ thiết bị". */
+  @Get('maintenance-parts/tree')
+  findPartsTree() {
+    return this.maintenanceService.findPartsTree();
+  }
+
   @UseGuards(PermissionsGuard)
   @RequirePermissions('workflow.design')
   @Post('maintenance-parts')
@@ -50,9 +58,24 @@ export class MaintenanceController {
 
   @UseGuards(PermissionsGuard)
   @RequirePermissions('workflow.design')
+  @Delete('maintenance-parts/:id')
+  deletePart(@Param('id', ParseUUIDPipe) id: string) {
+    return this.maintenanceService.deletePart(id);
+  }
+
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('workflow.design')
   @Put('maintenance-parts/:id/schedules')
   setSchedules(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetSchedulesDto) {
     return this.maintenanceService.setSchedules(id, dto);
+  }
+
+  /** BRD 3 US 2.1 AC2 — "Thêm thông tin công việc" ở Ma trận bảo trì. */
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('workflow.design')
+  @Put('maintenance-parts/:id/task-template')
+  setTaskTemplate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetTaskTemplateDto) {
+    return this.maintenanceService.setTaskTemplate(id, dto);
   }
 
   // -------------------------------------------------------------- Tickets

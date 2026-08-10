@@ -38,6 +38,11 @@ export interface ApiTaskStepInstance {
   status: TaskStepStatus;
   progress: number;
   assignees?: ApiTaskStepAssignee[];
+  /**
+   * BRD 3 US 3.1 — nguồn công việc của Node E, đông cứng lúc tạo đơn.
+   * Rỗng = "Thiết lập thủ công".
+   */
+  eTaskSource?: 'device_default' | 'task_list' | 'manual' | null;
 }
 
 export interface ApiTaskInstance {
@@ -56,6 +61,12 @@ export interface ApiTaskInstance {
   priority: TaskPriority;
   taskCode: string;
   description?: string | null;
+  /**
+   * BRD 3 US 2.1 AC2 — chuỗi JSON nhiệm vụ của thiết bị, chép sang lúc Lệnh
+   * công việc được tạo. Chỉ có ở Lệnh sinh từ phiếu bảo trì.
+   */
+  maintenancePartId?: string | null;
+  equipmentTaskTemplate?: Array<{ title: string; durationMinutes: number; note?: string }> | null;
   steps?: ApiTaskStepInstance[];
 }
 

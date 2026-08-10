@@ -14,6 +14,9 @@ import { Position } from '../positions/position.entity';
 import { User } from '../users/user.entity';
 import { ROLE_LETTERS } from './role-letter';
 import type { RoleLetter } from './role-letter';
+import { E_TASK_SOURCES } from './e-task-source';
+import type { ETaskSource } from './e-task-source';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 /**
  * A RACI tag always anchors to an org unit, and optionally narrows to a position
@@ -30,6 +33,7 @@ import type { RoleLetter } from './role-letter';
 @Check(`"role_letter" <> 'C' OR "fixed_rollback_step_id" IS NOT NULL`)
 @Check(`"role_letter" <> 'A' OR "fixed_rollback_step_id" IS NULL`)
 @Check(`"position_id" IS NULL OR "user_id" IS NULL`)
+@Check(`"role_letter" = 'E' OR "e_task_source" IS NULL`)
 export class RaciAssignment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -67,6 +71,18 @@ export class RaciAssignment {
 
   @Column({ name: 'role_letter', type: 'enum', enum: ROLE_LETTERS })
   roleLetter: RoleLetter;
+
+  /**
+   * BRD 3 US 3.1 AC2 — chỉ có nghĩa với tag `E`. Rỗng = `manual`, tức hành vi
+   * có sẵn từ trước BRD 3 (người giữ Node E tự gõ danh sách lúc phân rã), nên
+   * mọi tag E đã tồn tại không đổi cách chạy.
+   */
+  @Column({ name: 'e_task_source', type: 'enum', enum: E_TASK_SOURCES, nullable: true })
+  eTaskSource?: ETaskSource | null;
+
+  /** Danh sách công việc gõ sẵn, chỉ dùng khi `eTaskSource = 'task_list'`. */
+  @Column({ name: 'e_task_list', type: 'jsonb', nullable: true })
+  eTaskList?: EquipmentTaskTemplate | null;
 
   @Column({ name: 'fixed_rollback_step_id', type: 'uuid', nullable: true })
   fixedRollbackStepId?: string | null;

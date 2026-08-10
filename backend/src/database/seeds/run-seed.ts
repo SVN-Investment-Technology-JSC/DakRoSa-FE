@@ -15,9 +15,11 @@ import { WorkflowKind } from '../../workflows/workflow-kind';
 import { RaciAssignment } from '../../raci/raci-assignment.entity';
 import { RoleLetterAllowlist } from '../../raci/role-letter-allowlist.entity';
 import { RoleLetter } from '../../raci/role-letter';
+import type { ETaskSource } from '../../raci/e-task-source';
 import { MaintenancePart } from '../../maintenance/maintenance-part.entity';
 import { MaintenanceSchedule } from '../../maintenance/maintenance-schedule.entity';
 import { MaintenanceFrequency, computeNextDueAt, todayInVietnam } from '../../maintenance/maintenance-frequency';
+import type { AssetCondition, AssetKind, EquipmentTaskTemplate } from '../../maintenance/asset';
 
 const SEED_PASSWORD = 'Password123!';
 
@@ -310,6 +312,8 @@ interface RaciAssignmentSeed {
   userEmail?: string;
   roleLetter: RoleLetter;
   fixedRollbackStepKey?: string;
+  /** BRD 3 US 3.1 — chỉ có nghĩa với `roleLetter: 'E'`. */
+  eTaskSource?: ETaskSource;
 }
 
 interface WorkflowStepSeed {
@@ -396,7 +400,12 @@ const WORKFLOWS: WorkflowSeed[] = [
         stepOrder: 1,
         stepCode: '1',
         stepName: 'Thực thi công việc',
-        assignments: [{ orgUnitKey: 'ban-phat-trien', roleLetter: 'E' }],
+        // BRD 3 US 3.1 — Node E lấy đầu việc từ JSON cấu hình sẵn của thiết bị.
+        // Hợp lệ vì `seedMaintenance` (chạy ngay sau hàm này) khai JSON cho các
+        // thiết bị đang trỏ vào WF-EXEC.
+        assignments: [
+          { orgUnitKey: 'ban-phat-trien', roleLetter: 'E', eTaskSource: 'device_default' as const },
+        ],
       },
       {
         key: 'exec-step-2',
@@ -486,8 +495,13 @@ async function seedWorkflows(
               userId: targetUser?.id ?? null,
               roleLetter: assignment.roleLetter,
               fixedRollbackStepId: fixedRollbackStep?.id ?? null,
+              eTaskSource: assignment.eTaskSource ?? null,
             }),
           );
+        } else if ((existing.eTaskSource ?? null) !== (assignment.eTaskSource ?? null)) {
+          // Chạy lại seed trên DB có từ trước BRD 3: nâng cấp tag E sẵn có thay
+          // vì bỏ qua, nếu không cấu hình nguồn công việc sẽ không bao giờ tới.
+          await raciRepo.update(existing.id, { eTaskSource: assignment.eTaskSource ?? null });
         }
       }
     }
@@ -518,14 +532,161 @@ interface PartSeed {
   orgUnitKey: string;
   /** Every part points at WF-EXEC so a Work Order can be raised right away. */
   schedules: Array<{ frequency: MaintenanceFrequency; anchorDate: string }>;
+  /** BRD 3 US 2.1 AC2 — "Danh sách nhiệm vụ" lưu dạng JSON theo thiết bị. */
+  taskTemplate?: EquipmentTaskTemplate;
 }
 
+/**
+ * BRD 3 Epic 1 — cây cấu trúc tài sản mẫu, đặt tên theo đúng "Quy cách đặt tên"
+ * của BRD: {Mã cty}-{Mã factory}-{Main part}-{Sub part}-{Thứ tự}.
+ *
+ * Các thiết bị `PART-*` seed từ BRD 2 được giữ nguyên làm node độc lập ở gốc
+ * cây — chúng có lịch bảo trì và phiếu nhắc đang chạy, gán bừa vào một nhánh
+ * chỉ để cây trông đẹp là bịa dữ liệu.
+ */
+interface AssetSeed {
+  code: string;
+  name: string;
+  assetKind: AssetKind;
+  parentCode?: string;
+  orgUnitKey?: string;
+  symbol?: string;
+  condition?: AssetCondition;
+  location?: string;
+  specifications?: string;
+  manufacturer?: string;
+}
+
+const ASSET_TREE: AssetSeed[] = [
+  { code: 'SB', name: 'Công ty Thủy điện Sông Bung', assetKind: 'company' },
+  {
+    code: 'SB-KD',
+    name: 'Nhà máy Khe Diên',
+    assetKind: 'factory',
+    parentCode: 'SB',
+    orgUnitKey: 'khoi-ky-thuat',
+    location: 'Quảng Nam',
+  },
+  {
+    code: 'SB-KD-T',
+    name: 'Tuabin',
+    assetKind: 'main_equipment',
+    parentCode: 'SB-KD',
+    orgUnitKey: 'ban-co-dien',
+    symbol: 'T',
+    condition: 'operating',
+    location: 'Gian máy - Cao trình 12.5',
+    manufacturer: 'Andritz Hydro',
+    specifications: 'Tuabin Francis trục đứng, công suất 2 × 4.5 MW, cột nước 96 m',
+  },
+  {
+    code: 'SB-KD-T-S-01',
+    name: 'Buồng xoắn',
+    assetKind: 'part',
+    parentCode: 'SB-KD-T',
+    orgUnitKey: 'to-co-khi',
+    symbol: 'S',
+    condition: 'operating',
+    location: 'Gian máy - Cao trình 12.5',
+    specifications: 'Thép tấm SS400, đường kính vào 1.8 m, áp lực thiết kế 12 bar',
+    manufacturer: 'Andritz Hydro',
+  },
+  {
+    code: 'SB-KD-T-Gu-01',
+    name: 'Cánh hướng',
+    assetKind: 'part',
+    parentCode: 'SB-KD-T',
+    orgUnitKey: 'to-co-khi',
+    symbol: 'Gu',
+    condition: 'operating',
+    location: 'Gian máy - Cao trình 12.5',
+    specifications: '20 cánh, thép không gỉ 13Cr-4Ni',
+  },
+  {
+    code: 'SB-KD-T-Sh-01',
+    name: 'Trục chính',
+    assetKind: 'part',
+    parentCode: 'SB-KD-T',
+    orgUnitKey: 'to-co-khi',
+    symbol: 'Sh',
+    condition: 'operating',
+    specifications: 'Thép rèn 34CrNiMo6, đường kính 420 mm',
+  },
+  {
+    // Lồng thêm một cấp để thấy nhánh Parts đi sâu được (giới hạn 5 cấp).
+    code: 'SB-KD-T-Sh-Ro-01',
+    name: 'Roăng làm kín trục',
+    assetKind: 'part',
+    parentCode: 'SB-KD-T-Sh-01',
+    orgUnitKey: 'to-co-khi',
+    symbol: 'Ro',
+    condition: 'standby',
+    location: 'Kho vật tư B2',
+    specifications: 'Roăng cơ khí kép, cao su NBR, DN 420',
+  },
+  {
+    code: 'SB-KD-G',
+    name: 'Máy phát',
+    assetKind: 'main_equipment',
+    parentCode: 'SB-KD',
+    orgUnitKey: 'ban-co-dien',
+    symbol: 'G',
+    condition: 'operating',
+    location: 'Gian máy - Cao trình 12.5',
+    specifications: 'Máy phát đồng bộ 3 pha, 5.5 MVA, 6.3 kV',
+    manufacturer: 'WEG',
+  },
+  {
+    code: 'SB-KD-G-Be-01',
+    name: 'Ổ đỡ hướng trên',
+    assetKind: 'part',
+    parentCode: 'SB-KD-G',
+    orgUnitKey: 'to-co-khi',
+    symbol: 'Be',
+    condition: 'operating',
+    specifications: 'Ổ đỡ bạc babbit, làm mát bằng dầu ISO VG 46',
+  },
+];
+
 const MAINTENANCE_PARTS: PartSeed[] = [
+  {
+    // Thiết bị "đầy đủ" của BRD 3: nằm trong cây, có lịch, VÀ có JSON danh sách
+    // nhiệm vụ — chính là thứ làm tùy chọn "Mặc định theo thiết bị" của Role E
+    // sáng lên ở Ma trận RSACIE.
+    code: 'SB-KD-T-S-01',
+    name: 'Buồng xoắn',
+    orgUnitKey: 'to-co-khi',
+    schedules: [
+      { frequency: 'month', anchorDate: '2026-01-10' },
+      { frequency: 'year', anchorDate: '2026-05-15' },
+    ],
+    taskTemplate: [
+      { title: 'Kiểm tra rò rỉ mặt bích buồng xoắn', durationMinutes: 45 },
+      { title: 'Đo độ dày thành buồng bằng siêu âm', durationMinutes: 90, note: 'Đo tại 8 điểm chuẩn' },
+      { title: 'Vệ sinh và sơn chống ăn mòn khu vực cửa vào', durationMinutes: 180 },
+      { title: 'Lập biên bản nghiệm thu, chụp ảnh hiện trạng', durationMinutes: 30 },
+    ],
+  },
+  {
+    code: 'SB-KD-G-Be-01',
+    name: 'Ổ đỡ hướng trên',
+    orgUnitKey: 'to-co-khi',
+    schedules: [{ frequency: 'quarter', anchorDate: '2026-02-20' }],
+    taskTemplate: [
+      { title: 'Lấy mẫu dầu bôi trơn đi phân tích', durationMinutes: 30 },
+      { title: 'Kiểm tra nhiệt độ và độ rung ổ đỡ', durationMinutes: 60 },
+      { title: 'Bổ sung / thay dầu ISO VG 46', durationMinutes: 120 },
+    ],
+  },
   {
     code: 'PART-CNC-01',
     name: 'Cụm trục chính máy CNC',
     orgUnitKey: 'to-ha-tang-mang',
     schedules: [{ frequency: 'month', anchorDate: '2026-01-15' }],
+    taskTemplate: [
+      { title: 'Kiểm tra độ đảo trục chính', durationMinutes: 60 },
+      { title: 'Thay mỡ bôi trơn ổ bi', durationMinutes: 90 },
+    ],
   },
   {
     code: 'PART-HYD-02',
@@ -576,6 +737,40 @@ async function seedMaintenance(orgUnitsByKey: Map<string, OrgUnit>): Promise<voi
   const execFlow = await workflowRepo.findOne({ where: { code: 'WF-EXEC' } });
   const today = todayInVietnam();
 
+  // Cây tài sản trước: các thiết bị có lịch bên dưới treo vào nhánh này, nên
+  // node cha phải tồn tại trước. ASSET_TREE đã xếp sẵn cha trước con.
+  const assetByCode = new Map<string, MaintenancePart>();
+  for (const seed of ASSET_TREE) {
+    const orgUnit = seed.orgUnitKey ? orgUnitsByKey.get(seed.orgUnitKey) : undefined;
+    if (seed.orgUnitKey && !orgUnit) throw new Error(`Unknown org unit key: ${seed.orgUnitKey}`);
+    const parent = seed.parentCode ? assetByCode.get(seed.parentCode) : undefined;
+    if (seed.parentCode && !parent) throw new Error(`Unknown parent asset: ${seed.parentCode}`);
+
+    const fields = {
+      name: seed.name,
+      assetKind: seed.assetKind,
+      parentId: parent?.id ?? null,
+      orgUnitId: orgUnit?.id ?? null,
+      symbol: seed.symbol ?? null,
+      condition: seed.condition ?? null,
+      location: seed.location ?? null,
+      specifications: seed.specifications ?? null,
+      manufacturer: seed.manufacturer ?? null,
+    };
+
+    let asset = await partRepo.findOne({ where: { code: seed.code } });
+    if (asset) {
+      // Chạy lại seed trên DB đã có dữ liệu BRD 2: nâng cấp node cũ vào đúng chỗ
+      // trong cây thay vì bỏ qua, nếu không cây sẽ khuyết nhánh.
+      await partRepo.update(asset.id, fields);
+      asset = await partRepo.findOneOrFail({ where: { id: asset.id } });
+    } else {
+      asset = await partRepo.save(partRepo.create({ code: seed.code, ...fields }));
+      console.log(`  created asset ${seed.code} (${seed.assetKind})`);
+    }
+    assetByCode.set(seed.code, asset);
+  }
+
   for (const seed of MAINTENANCE_PARTS) {
     const orgUnit = orgUnitsByKey.get(seed.orgUnitKey);
     if (!orgUnit) throw new Error(`Unknown org unit key: ${seed.orgUnitKey}`);
@@ -586,6 +781,13 @@ async function seedMaintenance(orgUnitsByKey: Map<string, OrgUnit>): Promise<voi
         partRepo.create({ code: seed.code, name: seed.name, orgUnitId: orgUnit.id }),
       );
       console.log(`  created part ${seed.code}`);
+    }
+
+    // Ghi đè để chạy lại seed sau khi bổ sung JSON vẫn cập nhật được; thiết bị
+    // không khai gì thì giữ nguyên cấu hình đang có trên DB.
+    if (seed.taskTemplate) {
+      await partRepo.update(part.id, { taskTemplate: seed.taskTemplate });
+      console.log(`  task template for ${seed.code}: ${seed.taskTemplate.length} nhiệm vụ`);
     }
 
     for (const sch of seed.schedules) {

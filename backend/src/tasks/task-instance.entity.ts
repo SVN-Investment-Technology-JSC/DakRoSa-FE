@@ -18,6 +18,7 @@ import { TASK_ORIGINS } from './task-origin';
 import type { TaskOrigin } from './task-origin';
 import { WORKFLOW_KINDS } from '../workflows/workflow-kind';
 import type { WorkflowKind } from '../workflows/workflow-kind';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 @Entity('task_instances')
 export class TaskInstance {
@@ -99,6 +100,17 @@ export class TaskInstance {
    */
   @Column({ name: 'parent_maintenance_ticket_id', type: 'uuid', nullable: true })
   parentMaintenanceTicketId?: string | null;
+
+  /**
+   * BRD 3 US 2.1 AC2 — "payload sinh ra lệnh làm việc sẽ tự động đính kèm chuỗi
+   * JSON này". Chép chứ không tham chiếu: sửa cấu hình thiết bị về sau không
+   * được phép đổi nội dung một Lệnh công việc đã phát ra.
+   */
+  @Column({ name: 'maintenance_part_id', type: 'uuid', nullable: true })
+  maintenancePartId?: string | null;
+
+  @Column({ name: 'equipment_task_template', type: 'jsonb', nullable: true })
+  equipmentTaskTemplate?: EquipmentTaskTemplate | null;
 
   @OneToMany(() => TaskStepInstance, (step) => step.task)
   steps: TaskStepInstance[];

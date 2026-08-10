@@ -6,8 +6,12 @@ import { RoleLetterAllowlist } from './role-letter-allowlist.entity';
 import { RoleLetter } from './role-letter';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { OrgUnitsService } from '../org-units/org-units.service';
-import { UpsertRaciCellDto } from './dto/upsert-raci-cell.dto';
+import { RaciTagDto, UpsertRaciCellDto } from './dto/upsert-raci-cell.dto';
 import { WorkflowStep } from '../workflows/workflow-step.entity';
+import { MaintenanceService } from '../maintenance/maintenance.service';
+import { DEFAULT_E_TASK_SOURCE, E_TASK_SOURCE_LABEL, E_TASK_SOURCES } from './e-task-source';
+import type { ETaskSource } from './e-task-source';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 @Injectable()
 export class RaciService {
@@ -18,6 +22,7 @@ export class RaciService {
     private readonly allowlistRepository: Repository<RoleLetterAllowlist>,
     private readonly workflowsService: WorkflowsService,
     private readonly orgUnitsService: OrgUnitsService,
+    private readonly maintenanceService: MaintenanceService,
   ) {}
 
   async getRoleLetterOptions(workflowId: string): Promise<RoleLetter[]> {
@@ -29,6 +34,82 @@ export class RaciService {
   async getValidRollbackTargets(workflowId: string, stepId: string): Promise<WorkflowStep[]> {
     const step = await this.workflowsService.findStepOrThrow(workflowId, stepId);
     return this.workflowsService.findPriorSteps(workflowId, step.stepOrder);
+  }
+
+  /**
+   * BRD 3 US 3.1 AC2/AC3 — ba tùy chọn của dropdown Role E, kèm việc tùy chọn
+   * "Mặc định theo thiết bị" có dùng được hay không.
+   *
+   * Lúc thiết kế luồng chưa biết Lệnh công việc sẽ thuộc thiết bị nào, nên câu
+   * hỏi được đặt lại thành câu trả lời được ngay: có thiết bị nào đang trỏ vào
+   * luồng này ở Ma trận bảo trì và đã khai JSON danh sách nhiệm vụ chưa. Chưa
+   * có ⇒ tùy chọn bị mờ, kèm lý do để người dùng biết phải đi cấu hình ở đâu.
+   */
+  async getETaskSourceOptions(workflowId: string): Promise<{
+    options: Array<{
+      value: ETaskSource;
+      label: string;
+      enabled: boolean;
+      disabledReason?: string;
+    }>;
+    devices: Array<{ id: string; code: string; name: string; taskCount: number }>;
+  }> {
+    await this.workflowsService.findOne(workflowId); // 404 nếu luồng không tồn tại
+    const devices = await this.maintenanceService.findDeviceTemplateSources(workflowId);
+
+    return {
+      devices,
+      options: E_TASK_SOURCES.map((value) => ({
+        value,
+        label: E_TASK_SOURCE_LABEL[value],
+        enabled: value !== 'device_default' || devices.length > 0,
+        disabledReason:
+          value === 'device_default' && devices.length === 0
+            ? 'Chưa có thiết bị nào gắn luồng này khai "Danh sách nhiệm vụ". Vào Ma trận bảo trì thiết bị → cột "Luồng Thực thi khi tạo Lệnh" → "Thêm thông tin công việc" để cấu hình trước.'
+            : undefined,
+      })),
+    };
+  }
+
+  /**
+   * Kiểm tra và chuẩn hoá cấu hình nguồn công việc của một tag trước khi lưu.
+   * `manual` được lưu thành NULL để tag E cũ (chưa từng khai gì) và tag E chọn
+   * "Thiết lập thủ công" là một, thay vì hai trạng thái chạy giống hệt nhau.
+   */
+  private async resolveETaskSource(
+    workflowId: string,
+    tag: RaciTagDto,
+  ): Promise<{ eTaskSource: ETaskSource | null; eTaskList: EquipmentTaskTemplate | null }> {
+    if (tag.roleLetter !== 'E') return { eTaskSource: null, eTaskList: null };
+
+    const source = tag.eTaskSource ?? DEFAULT_E_TASK_SOURCE;
+
+    if (source === 'device_default') {
+      const devices = await this.maintenanceService.findDeviceTemplateSources(workflowId);
+      if (devices.length === 0) {
+        throw new BadRequestException(
+          'Không dùng được "Mặc định theo thiết bị": chưa có thiết bị nào gắn luồng này khai Danh sách nhiệm vụ ở Ma trận bảo trì thiết bị.',
+        );
+      }
+      return { eTaskSource: 'device_default', eTaskList: null };
+    }
+
+    if (source === 'task_list') {
+      if (!tag.eTaskList || tag.eTaskList.length === 0) {
+        throw new BadRequestException(
+          'Chọn "Nhập danh sách công việc" thì phải khai ít nhất một nhiệm vụ.',
+        );
+      }
+      const duplicate = tag.eTaskList.find(
+        (t, i) => tag.eTaskList!.findIndex((o) => o.title.trim() === t.title.trim()) !== i,
+      );
+      if (duplicate) {
+        throw new BadRequestException(`Nhiệm vụ "${duplicate.title}" bị khai hai lần.`);
+      }
+      return { eTaskSource: 'task_list', eTaskList: tag.eTaskList };
+    }
+
+    return { eTaskSource: null, eTaskList: null };
   }
 
   async replaceCellAssignments(
@@ -97,7 +178,13 @@ export class RaciService {
             );
           }
         }
+      } else if (tag.eTaskSource || tag.eTaskList) {
+        throw new BadRequestException(
+          'Nguồn dữ liệu công việc chỉ khai được cho vai trò Thực thi (E).',
+        );
       }
+
+      const { eTaskSource, eTaskList } = await this.resolveETaskSource(workflowId, tag);
 
       let fixedRollbackStepId: string | null = null;
       if (tag.roleLetter === 'C') {
@@ -119,6 +206,8 @@ export class RaciService {
           userId: dto.userId ?? null,
           roleLetter: tag.roleLetter,
           fixedRollbackStepId,
+          eTaskSource,
+          eTaskList,
         }),
       );
     }

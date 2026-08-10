@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { ApiUserRef, ApiTaskInstance } from './tasks';
+import type { EquipmentTaskItem } from './maintenance';
 
 export interface ApiExecutionAttachment {
   id: string;
@@ -50,6 +51,23 @@ export function getBreakdownCandidates(
 
 export function getSubtasks(taskId: string, stepId: string): Promise<ApiExecutionSubtask[]> {
   return apiClient.get(base(taskId, stepId)).then((r) => r.data);
+}
+
+/**
+ * BRD 3 US 3.1 AC3 — các đầu việc bước E này phải giao, theo nguồn đã chốt lúc
+ * thiết kế luồng. Chỉ là gợi ý: gắn người cho từng việc vẫn là việc của người
+ * giữ Node E, nên phân rã vẫn đi qua `replaceSubtasks`.
+ */
+export function getSuggestedTasks(
+  taskId: string,
+  stepId: string,
+): Promise<{
+  source: 'device_default' | 'task_list' | 'manual';
+  tasks: EquipmentTaskItem[];
+  deviceName?: string | null;
+  unavailableReason?: string;
+}> {
+  return apiClient.get(`${base(taskId, stepId)}/suggested`).then((r) => r.data);
 }
 
 /** Thay toàn bộ danh sách — luôn gửi đủ những gì muốn giữ lại. */

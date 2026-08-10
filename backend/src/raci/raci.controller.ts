@@ -15,6 +15,12 @@ export class RaciController {
     return this.raciService.getRoleLetterOptions(id);
   }
 
+  /** BRD 3 US 3.1 AC2/AC3 — dropdown nguồn công việc của Role E. */
+  @Get(':id/e-task-source-options')
+  getETaskSourceOptions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.raciService.getETaskSourceOptions(id);
+  }
+
   @Get(':id/steps/:stepId/valid-rollback-targets')
   getValidRollbackTargets(
     @Param('id', ParseUUIDPipe) id: string,

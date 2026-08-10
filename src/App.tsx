@@ -7,6 +7,7 @@ import { INITIAL_CANVAS_NODES } from './data/initialData';
 import { SideNavBar } from './components/SideNavBar';
 import { RsacieMatrixView } from './components/RsacieMatrixView';
 import { OrgChartView } from './components/OrgChartView';
+import { AssetTreeView } from './components/AssetTreeView';
 import { MaintenanceConfigView } from './components/MaintenanceConfigView';
 import { WorkspaceView } from './components/WorkspaceView';
 import { MaintenanceDashboardView } from './components/MaintenanceDashboardView';
@@ -26,7 +27,13 @@ export default function App() {
 
   // Hiding the nav entry is not enough: the tab could still be pointing at an
   // admin view (stale state, a role change mid-session). Fall back to Workspace.
-  const ADMIN_TABS: NavTab[] = ['raci', 'org-chart', 'maintenance-dashboard', 'maintenance-config'];
+  const ADMIN_TABS: NavTab[] = [
+    'raci',
+    'org-chart',
+    'asset-tree',
+    'maintenance-dashboard',
+    'maintenance-config',
+  ];
   const visibleTab: NavTab = !isAdmin && ADMIN_TABS.includes(currentTab) ? 'workspace' : currentTab;
 
   return (
@@ -65,6 +72,10 @@ export default function App() {
 
         {visibleTab === 'org-chart' && (
           <OrgChartView onMenuToggle={() => setIsMobileOpen(true)} />
+        )}
+
+        {visibleTab === 'asset-tree' && (
+          <AssetTreeView onMenuToggle={() => setIsMobileOpen(true)} />
         )}
 
         {visibleTab === 'raci' && (

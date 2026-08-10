@@ -9,6 +9,7 @@ describe('MaintenanceService.runReminderSweep', () => {
   let service: MaintenanceService;
   let schedulesRepository: { find: jest.Mock; update: jest.Mock };
   let ticketsRepository: { findOne: jest.Mock };
+  let partsRepository: { findOne: jest.Mock };
   let notificationsService: { createMany: jest.Mock };
   let orgUnitsService: { resolveAssignees: jest.Mock };
   let dataSource: { transaction: jest.Mock; query: jest.Mock };
@@ -29,6 +30,11 @@ describe('MaintenanceService.runReminderSweep', () => {
     savedTickets = [];
     schedulesRepository = { find: jest.fn(), update: jest.fn().mockResolvedValue({}) };
     ticketsRepository = { findOne: jest.fn().mockResolvedValue(null) };
+    // BRD 3: đơn vị phụ trách được suy ra từ cây tài sản, nên sweep phải đọc
+    // được thiết bị chứ không lấy thẳng `schedule.part.orgUnitId`.
+    partsRepository = {
+      findOne: jest.fn().mockResolvedValue({ id: 'part-1', orgUnitId: 'ou-1', parentId: null }),
+    };
     notificationsService = { createMany: jest.fn().mockResolvedValue([]) };
     orgUnitsService = {
       resolveAssignees: jest.fn().mockResolvedValue([{ userId: 'u-head', isEscalated: false }]),
@@ -47,7 +53,7 @@ describe('MaintenanceService.runReminderSweep', () => {
     };
 
     service = new MaintenanceService(
-      {} as any,
+      partsRepository as any,
       schedulesRepository as any,
       ticketsRepository as any,
       orgUnitsService as any,
@@ -132,14 +138,20 @@ describe('MaintenanceService.runReminderSweep', () => {
 });
 
 describe('MaintenanceService.createWorkOrder', () => {
-  const build = (ticket: Record<string, unknown>, tasksService: unknown, isManager = true) => {
+  const build = (
+    ticket: Record<string, unknown>,
+    tasksService: unknown,
+    isManager = true,
+    part: Record<string, unknown> | null = { id: 'part-1', orgUnitId: 'ou-1', parentId: null },
+  ) => {
     const ticketsRepository = {
       findOne: jest.fn().mockResolvedValue(ticket),
       update: jest.fn().mockResolvedValue({}),
     };
+    const partsRepository = { findOne: jest.fn().mockResolvedValue(part) };
     const orgUnitsService = { hasSubordinates: jest.fn().mockResolvedValue(isManager) };
     const service = new MaintenanceService(
-      {} as any,
+      partsRepository as any,
       {} as any,
       ticketsRepository as any,
       orgUnitsService as any,
@@ -159,7 +171,8 @@ describe('MaintenanceService.createWorkOrder', () => {
     priority: 'High',
     note: null,
     resultingTaskId: null,
-    part: { code: 'PART-1', name: 'Bơm A', orgUnitId: 'ou-1' },
+    partId: 'part-1',
+    part: { id: 'part-1', code: 'PART-1', name: 'Bơm A', orgUnitId: 'ou-1', taskTemplate: null },
     schedule: { workflowId: 'wf-exec' },
     ...over,
   });
@@ -201,6 +214,70 @@ describe('MaintenanceService.createWorkOrder', () => {
     const { service } = build(ticket({ schedule: { workflowId: null } }), tasksService);
     await expect(service.createWorkOrder('tk-1', 'u-clicker')).rejects.toThrow(
       /chưa gắn Luồng Thực thi/,
+    );
+    expect(tasksService.create).not.toHaveBeenCalled();
+  });
+
+  // ------------------------------------------------------------------ BRD 3
+
+  it('đính kèm nguyên chuỗi JSON nhiệm vụ của thiết bị vào Lệnh công việc (US 2.1 AC2)', async () => {
+    const taskTemplate = [
+      { title: 'Kiểm tra rò rỉ', durationMinutes: 45 },
+      { title: 'Vệ sinh cửa vào', durationMinutes: 120 },
+    ];
+    const tasksService = { create: jest.fn().mockResolvedValue({ id: 'task-1' }) };
+    const { service } = build(
+      ticket({ part: { id: 'part-1', code: 'PART-1', name: 'Bơm A', taskTemplate } }),
+      tasksService,
+    );
+
+    await service.createWorkOrder('tk-1', 'u-clicker');
+
+    const [, , meta] = tasksService.create.mock.calls[0];
+    expect(meta).toMatchObject({ maintenancePartId: 'part-1' });
+    expect(meta.equipmentTaskTemplate).toEqual(taskTemplate);
+  });
+
+  it('suy ra đơn vị phụ trách từ cấp trên trong cây khi thiết bị không tự khai', async () => {
+    // Một chi tiết nằm sâu thường không tự khai đơn vị — nó thuộc về đơn vị
+    // quản lý cả phân hệ chứa nó.
+    const tasksService = { create: jest.fn().mockResolvedValue({ id: 'task-1' }) };
+    const ticketsRepository = {
+      findOne: jest.fn().mockResolvedValue(ticket()),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    const partsRepository = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'part-1', orgUnitId: null, parentId: 'part-parent' })
+        .mockResolvedValueOnce({ id: 'part-parent', orgUnitId: 'ou-cha', parentId: null }),
+    };
+    const service = new MaintenanceService(
+      partsRepository as any,
+      {} as any,
+      ticketsRepository as any,
+      { hasSubordinates: jest.fn().mockResolvedValue(true) } as any,
+      {} as any,
+      tasksService as any,
+      {} as any,
+      { record: jest.fn().mockResolvedValue(undefined) } as any,
+    );
+
+    await service.createWorkOrder('tk-1', 'u-clicker');
+
+    const [dto] = tasksService.create.mock.calls[0];
+    expect(dto.orgUnitId).toBe('ou-cha');
+  });
+
+  it('từ chối khi cả nhánh cây không có đơn vị phụ trách nào', async () => {
+    const tasksService = { create: jest.fn() };
+    const { service } = build(ticket(), tasksService, true, {
+      id: 'part-1',
+      orgUnitId: null,
+      parentId: null,
+    });
+    await expect(service.createWorkOrder('tk-1', 'u-clicker')).rejects.toThrow(
+      /chưa có đơn vị phụ trách/,
     );
     expect(tasksService.create).not.toHaveBeenCalled();
   });

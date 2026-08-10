@@ -14,6 +14,7 @@ import { OrgUnit } from '../org-units/org-unit.entity';
 import type { TaskStatus } from './task-status';
 import type { TaskOrigin } from './task-origin';
 import type { RoleLetter } from '../raci/role-letter';
+import type { EquipmentTaskTemplate } from '../maintenance/asset';
 
 export interface FindAllTasksFilter {
   status?: TaskStatus;
@@ -208,6 +209,9 @@ export class TasksService {
        * what the workflow's RACI would have resolved to.
        */
       nodeEOwnerUserId?: string;
+      /** BRD 3 US 2.1 AC2 — thiết bị sinh ra Lệnh và JSON nhiệm vụ của nó. */
+      maintenancePartId?: string;
+      equipmentTaskTemplate?: EquipmentTaskTemplate | null;
     },
   ): Promise<TaskInstance> {
     const workflow = await this.workflowsService.findOne(dto.workflowId);
@@ -233,6 +237,8 @@ export class TasksService {
         parentTaskId: meta?.parentTaskId ?? null,
         parentMaintenanceTicketId: meta?.parentMaintenanceTicketId ?? null,
         origin: meta?.origin ?? 'manual',
+        maintenancePartId: meta?.maintenancePartId ?? null,
+        equipmentTaskTemplate: meta?.equipmentTaskTemplate ?? null,
       }),
     );
 
@@ -291,6 +297,11 @@ export class TasksService {
         })
         .join('; ');
 
+      // BRD 3 US 3.1 — đông cứng cấu hình nguồn công việc của Node E ngay lúc
+      // tạo đơn. Một bước chỉ có tối đa một tag E hữu ích ở đây; nếu có nhiều,
+      // lấy tag đầu tiên có khai để không phụ thuộc thứ tự trả về của DB.
+      const eAssignment = assignments.find((a) => a.roleLetter === 'E' && a.eTaskSource);
+
       const stepInstance = await this.stepsRepository.save(
         this.stepsRepository.create({
           taskId: task.id,
@@ -300,6 +311,8 @@ export class TasksService {
           roleAssignedSummary: roleAssignedSummary || null,
           status: i === 0 ? 'In Progress' : 'Pending',
           progress: 0,
+          eTaskSource: eAssignment?.eTaskSource ?? null,
+          eTaskList: eAssignment?.eTaskList ?? null,
         }),
       );
 

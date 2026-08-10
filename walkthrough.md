@@ -170,7 +170,64 @@ Vào mục **Workspace** (mặc định khi đăng nhập). Đây là nơi thể
 - **Tạo Lệnh công việc**: mở một Luồng Thực thi thật từ phiếu. **Người bấm nút chính là người giữ Node E** của luồng đó — nên chỉ **cấp Quản lý** (người có cấp dưới) mới bấm được. Sau khi tạo, phiếu bị khoá, không sửa và không tạo Lệnh lần hai.
 - **Quét ngay**: chạy lại đợt nhắc việc ngay lập tức thay vì đợi 00:00 — hữu ích khi vừa cấu hình lịch xong hoặc máy chủ vừa ngừng vài ngày. Chạy lại nhiều lần **không sinh phiếu trùng**.
 
-### 4.5. Gắn Luồng Thực thi con vào một bước (tích hợp luồng)
+### 4.5. Sơ đồ thiết bị (cây cấu trúc tài sản) — ✅ đã nối backend thật
+
+Menu **Sơ đồ thiết bị** (khu Quản trị Admin) hiển thị toàn bộ tài sản dưới dạng cây 4 cấp:
+
+**Công ty → Nhà máy / Hạ tầng → Phân hệ thiết bị chính → Bộ phận / Chi tiết**
+
+- Nhánh **Bộ phận lồng được trong nhau, tối đa 5 cấp** (đúng giới hạn "1 Main part ↔ 5 sub-parts" của BRD). Thêm cấp thứ 6 sẽ bị chặn kèm thông báo.
+- Cấp bậc được **kiểm ở backend**: không thể đặt một Bộ phận thẳng dưới Công ty, và chỉ Công ty mới đứng ở gốc cây.
+- Bấm một node để mở **khung thông tin chi tiết** bên phải: Kí hiệu, Tình trạng (Đang vận hành / Hỏng / Dự phòng / Khác), Vị trí, Đơn vị phụ trách, Nhà sản xuất, Thông số chính — bấm **Sửa** để chỉnh tại chỗ.
+- Khung chi tiết cũng hiện **chu kỳ bảo trì** đang đặt và **danh sách nhiệm vụ JSON** đã khai (chỉ đọc ở đây — khai ở Ma trận bảo trì, xem 4.4).
+- **Đơn vị phụ trách kế thừa từ cấp trên**: node Công ty / Nhà máy không cần khai đơn vị. Khi cần biết ai phụ trách (lên lịch, gửi phiếu nhắc, tạo Lệnh công việc), hệ thống **leo ngược cây tìm đơn vị gần nhất có khai**. Cả nhánh không có đơn vị nào thì việc lên lịch sẽ bị chặn kèm lý do rõ ràng.
+- **Xoá** một node sẽ xoá cả nhánh con bên dưới, và **bị chặn nếu nhánh còn phiếu bảo trì** trong lịch sử — trường hợp đó hãy tắt hoạt động thay vì xoá.
+- Ô tìm kiếm lọc theo tên/mã và **giữ lại cả nhánh cha** của kết quả, nên không bị mất ngữ cảnh.
+
+Dữ liệu seed dựng sẵn nhánh mẫu theo đúng quy cách đặt tên của BRD (`{Mã cty}-{Mã factory}-{Main part}-{Sub part}-{Thứ tự}`):
+
+```
+SB (Công ty Thủy điện Sông Bung)
+└── SB-KD (Nhà máy Khe Diên)
+    ├── SB-KD-T  (Tuabin)
+    │   ├── SB-KD-T-S-01   Buồng xoắn        ← có 4 nhiệm vụ JSON + lịch tháng/năm
+    │   ├── SB-KD-T-Gu-01  Cánh hướng
+    │   └── SB-KD-T-Sh-01  Trục chính
+    │       └── SB-KD-T-Sh-Ro-01  Roăng làm kín trục
+    └── SB-KD-G  (Máy phát)
+        └── SB-KD-G-Be-01  Ổ đỡ hướng trên   ← có 3 nhiệm vụ JSON + lịch quý
+```
+
+> Các thiết bị `PART-*` seed từ trước nằm ở nhóm **"Chưa xếp vào cây"** ở cuối danh sách. Chúng vẫn chạy lịch và sinh phiếu như cũ — chỉ là chưa ai xếp vào nhánh nào.
+
+### 4.6. Danh sách nhiệm vụ theo thiết bị (JSON) — ✅ đã nối backend thật
+
+Ở **Ma trận bảo trì thiết bị**, cột *"Luồng Thực thi khi tạo Lệnh"* có thêm nút **"Thêm thông tin công việc"** dưới ô chọn luồng:
+
+- Mở popup khai **Danh sách nhiệm vụ** + **Thời gian thực hiện từng nhiệm vụ** (phút) + ghi chú tuỳ chọn.
+- Toàn bộ nội dung được lưu **dạng JSON gắn với ID thiết bị**. Đã khai rồi thì nút đổi thành `N nhiệm vụ (JSON)` màu tím, bấm để sửa; lưu danh sách rỗng để gỡ.
+- Mỗi khi thiết bị này sinh **Lệnh công việc**, chuỗi JSON được **chép nguyên văn vào Lệnh đó**. Chép chứ không tham chiếu: sửa cấu hình thiết bị về sau không làm đổi nội dung một Lệnh đã phát ra.
+- Bảng ma trận giờ cũng **thụt lề theo cây tài sản**, nên chi tiết luôn nằm ngay dưới phân hệ chứa nó.
+
+### 4.7. Nguồn dữ liệu công việc của Role E — ✅ đã nối backend thật
+
+Trong **Ma trận RSACIE / Bảng 2**, khi bấm chữ **E** để gán vai trò Thực thi, hệ thống hiện dropdown 3 tùy chọn:
+
+| Tùy chọn | Ý nghĩa | Điều kiện |
+|---|---|---|
+| **Mặc định theo thiết bị** | `E(x)` lấy đúng các đầu việc từ JSON của thiết bị sinh ra Lệnh | **Bị mờ** nếu chưa có thiết bị nào gắn luồng này khai JSON |
+| **Nhập danh sách công việc** | Danh sách cố định gõ ngay lúc thiết kế, dùng chung cho mọi lần chạy | Phải khai ít nhất 1 nhiệm vụ |
+| **Thiết lập thủ công** | Người giữ Node E tự gõ lúc phân rã (hành vi cũ, mặc định) | Luôn dùng được |
+
+- Tùy chọn bị mờ có **tooltip chỉ rõ phải đi cấu hình ở đâu** — không để người dùng đoán.
+- Ô đã gán E hiện **badge nhỏ**: `TB` = theo thiết bị, `DS` = theo danh sách. Rê chuột xem chi tiết.
+- Cấu hình được **đông cứng vào đơn ngay lúc tạo**: sửa ma trận sau đó không làm đổi cách giao việc của một đơn đang chạy dở.
+- Trong **panel phân rã Node E** ở Workspace, nếu luồng đã quy định sẵn đầu việc thì panel hiện khung tím liệt kê đủ danh sách, và bấm *"Phân rã công việc"* sẽ **đổ sẵn các dòng** — chỉ còn phải chọn người nhận. Nút **"Nạp lại từ cấu hình"** đặt lại danh sách đang sửa về đúng cấu hình gốc.
+- Trường hợp biên được xử lý rõ: nếu bước E đặt *"Mặc định theo thiết bị"* nhưng Lệnh cụ thể lại đến từ thiết bị **chưa khai JSON**, panel hiện cảnh báo vàng giải thích và cho phân rã thủ công — thay vì im lặng trả về danh sách rỗng.
+
+**Thử nhanh toàn bộ chuỗi**: đăng nhập `admin@company.vn` → *Sơ đồ thiết bị* xem cây → *Bảng Bảo trì & Cảnh báo* → **Quét ngay** → tìm phiếu của **SB-KD-T-S-01 (Buồng xoắn)** → đăng nhập lại bằng `truong.van.hanh@company.vn` (Trưởng Tổ Cơ khí) → **Tạo Lệnh công việc** → mở Lệnh trong Workspace, panel Node E sẽ hiện sẵn đúng 4 nhiệm vụ đã khai cho Buồng xoắn.
+
+### 4.8. Gắn Luồng Thực thi con vào một bước (tích hợp luồng)
 
 Trong Ma trận RSACIE, mỗi dòng bước có một nút nhỏ ở bên phải tên bước:
 
@@ -189,7 +246,7 @@ Quy tắc khác nhau giữa hai bảng:
 
 Danh sách chọn chỉ hiện các luồng ở Bảng 2 — một Quy trình không thể làm luồng con của ai.
 
-### 4.6. Các tính năng khác — ⚠️ vẫn dùng dữ liệu giả lập (mock), chưa nối backend
+### 4.9. Các tính năng khác — ⚠️ vẫn dùng dữ liệu giả lập (mock), chưa nối backend
 
 - **Canvas** (trang riêng) và **Submitter (gửi yêu cầu qua luồng triage)** — vẫn toàn bộ mock, thay đổi tạm trong phiên làm việc, mất khi tải lại trang. (Lưu ý: việc tạo đơn trực tiếp giờ đã có thật trong Workspace ở mục 4.3 — Submitter riêng chỉ còn cần cho luồng "gửi yêu cầu rồi chờ người khác triage sau", vốn ít ưu tiên hơn.)
 
@@ -214,4 +271,5 @@ Nếu muốn kiểm tra trực tiếp các tính năng backend đã xong nhưng 
 - **Phân quyền & phạm vi nhìn thấy**: khu **Quản trị Admin** (Ma trận, Sơ đồ Tổ chức, Bảo trì) giờ **chỉ tài khoản có vai trò `admin`** mới thấy và vào được. Ở **Workspace**, người dùng thường chỉ còn thấy công việc mà **đơn vị nhỏ nhất của mình** có tham gia — "tham gia" nghĩa là đơn hướng về đơn vị đó, mình tự mở đơn, hoặc một thành viên của đơn vị đang giữ vai trò ở bước bất kỳ. Trưởng đơn vị thấy thêm phần việc của **các tổ bên dưới**, nếu không thì đơn vừa giao xuống sẽ biến mất khỏi Workspace của chính người giao. Admin vẫn xem được toàn hệ thống. Ví dụ với dữ liệu seed: `ky.thuat1` (Tổ Cơ khí) thấy 3 đơn, `truong.co.dien` (Ban Cơ điện) thấy 3, `admin` thấy 17.
 - **Xem lại chi tiết từng bước**: bấm vào **bất kỳ ô nào trong "Tiến trình các bước"** sẽ mở bảng chi tiết của bước đó — người giữ vai trò (kèm nhãn *Xử lý thay thế* / *Được giao bởi*), toàn bộ **công việc con và file đính kèm** (bấm để tải), và **nhật ký riêng của bước**. Đây là màn hình chỉ đọc: cấp trên xem được kết quả cấp dưới đã nộp trước khi duyệt, và người giữ E ở bước sau xem được kết quả E của các bước trước — hai trường hợp trước đây không xem được.
 - **Chữ S là ngoại lệ**: S = quyền **mở đơn**, không phải quyền xử lý đơn đang chạy, nên nó không dồn về trưởng đơn vị như R/A/C/I/E. Gán **S cho một đơn vị** nghĩa là **mọi thành viên của đơn vị đó, kể cả các tổ bên dưới**, đều mở được đơn. Gán S đích danh một người hoặc theo chức vụ thì vẫn theo đúng luật cũ. Kiểm chứng trên dữ liệu seed: bước 1 của "Quy trình Phê duyệt CapEx" nay có 3 người giữ S (cả Ban Phát triển) thay vì 1.
+- **BRD 3 — Sơ đồ thiết bị, JSON nhiệm vụ, và nguồn công việc Role E**: thêm menu **Sơ đồ thiết bị** với cây tài sản 4 cấp (mục 4.5); thêm nút **"Thêm thông tin công việc"** ở Ma trận bảo trì để khai danh sách nhiệm vụ **lưu dạng JSON theo thiết bị**, tự đính kèm vào mọi Lệnh công việc sinh ra từ thiết bị đó (mục 4.6); và dropdown **3 tùy chọn nguồn công việc cho Role E**, trong đó *"Mặc định theo thiết bị"* bị mờ khi chưa có thiết bị nào gắn luồng khai JSON (mục 4.7). **Không có tính năng cũ nào bị bỏ** — cây tài sản dùng lại chính bảng thiết bị sẵn có, nên lịch bảo trì, phiếu nhắc, Lệnh công việc và phân rã `E(x)` chạy y nguyên; thiết bị seed từ trước nằm ở nhóm "Chưa xếp vào cây". Một thay đổi có ảnh hưởng: **đơn vị phụ trách của thiết bị nay được kế thừa từ cấp trên trong cây** thay vì đọc thẳng một cột — thiết bị đã khai đơn vị thì không đổi gì, thiết bị chưa khai thì thừa hưởng của phân hệ chứa nó.
 - **Ma trận gọn hơn khi đọc một quy trình**: sổ dọc một quy trình sẽ **ẩn các cột đơn vị không liên quan** tới quy trình đó. Nút **"Hiện đủ cột"** ở đầu bảng bật lại toàn bộ cột để gán vai trò cho đơn vị chưa có tag nào. Thu gọn hết quy trình thì bảng tự trở về đầy đủ.

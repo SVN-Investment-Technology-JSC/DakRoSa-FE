@@ -7,8 +7,15 @@ import {
 } from '../hooks/useMaintenance';
 import { useOrgUnitTree } from '../hooks/useOrgUnits';
 import { useWorkflows } from '../hooks/useWorkflows';
+import { useSetEquipmentTaskTemplate } from '../hooks/useMaintenance';
 import type { ApiOrgUnit, ApiOrgUnitTreeNode } from '../api/orgUnits';
-import type { MaintenanceFrequency } from '../api/maintenance';
+import {
+  ASSET_KIND_ICON,
+  ASSET_KIND_LABEL,
+  type ApiMaintenancePart,
+  type EquipmentTaskItem,
+  type MaintenanceFrequency,
+} from '../api/maintenance';
 
 interface MaintenanceConfigViewProps {
   onMenuToggle?: () => void;
@@ -25,6 +32,38 @@ const FREQUENCIES: Array<{ id: MaintenanceFrequency; label: string }> = [
 /** One editable row of the matrix: which frequencies are ticked for this part. */
 type DraftRow = { frequencies: Set<MaintenanceFrequency>; workflowId: string };
 
+const errorMessage = (error: unknown, fallback: string) =>
+  (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback;
+
+/**
+ * Sắp thiết bị theo đúng thứ tự cây tài sản, kèm độ sâu để thụt lề.
+ *
+ * `GET /maintenance-parts` trả về danh sách phẳng sắp theo mã, nên nếu in
+ * nguyên xi thì một chi tiết sẽ nằm cách xa phân hệ chứa nó và bảng đọc như
+ * một danh sách rời rạc thay vì một cây.
+ */
+function orderByHierarchy(parts: ApiMaintenancePart[]): Array<{ part: ApiMaintenancePart; depth: number }> {
+  const childrenOf = new Map<string | null, ApiMaintenancePart[]>();
+  for (const part of parts) {
+    const key = part.parentId ?? null;
+    childrenOf.set(key, [...(childrenOf.get(key) ?? []), part]);
+  }
+  // Node có cha nhưng cha bị lọc mất (không nên xảy ra) vẫn phải hiện ra, nếu
+  // không thiết bị sẽ biến mất khỏi ma trận mà không ai biết vì sao.
+  const known = new Set(parts.map((p) => p.id));
+  const orphans = parts.filter((p) => p.parentId && !known.has(p.parentId));
+
+  const out: Array<{ part: ApiMaintenancePart; depth: number }> = [];
+  const walk = (nodes: ApiMaintenancePart[], depth: number) => {
+    for (const node of nodes) {
+      out.push({ part: node, depth });
+      walk(childrenOf.get(node.id) ?? [], depth + 1);
+    }
+  };
+  walk([...(childrenOf.get(null) ?? []), ...orphans], 0);
+  return out;
+}
+
 function flattenTree(units: ApiOrgUnitTreeNode[]): ApiOrgUnit[] {
   const flat: ApiOrgUnit[] = [];
   const walk = (nodes: ApiOrgUnitTreeNode[]) => {
@@ -37,6 +76,178 @@ function flattenTree(units: ApiOrgUnitTreeNode[]): ApiOrgUnit[] {
   return flat;
 }
 
+// ------------------------------- BRD 3 US 2.1 AC2 — "Thêm thông tin công việc"
+
+interface TaskTemplateModalProps {
+  part: ApiMaintenancePart;
+  onClose: () => void;
+}
+
+interface TaskDraftRow {
+  title: string;
+  /** Giữ dạng chuỗi để ô nhập trống được, thay vì tự nhảy về 0. */
+  durationMinutes: string;
+  note: string;
+}
+
+/**
+ * Khai "Danh sách nhiệm vụ" + "Thời gian thực hiện từng nhiệm vụ" của một thiết
+ * bị. Toàn bộ nội dung này được backend lưu dạng JSON gắn với ID thiết bị, và
+ * đính kèm vào payload mỗi khi thiết bị sinh ra Lệnh công việc.
+ */
+const TaskTemplateModal: React.FC<TaskTemplateModalProps> = ({ part, onClose }) => {
+  const setTemplate = useSetEquipmentTaskTemplate();
+  const [rows, setRows] = useState<TaskDraftRow[]>(() =>
+    (part.taskTemplate ?? []).length > 0
+      ? (part.taskTemplate ?? []).map((t) => ({
+          title: t.title,
+          durationMinutes: String(t.durationMinutes),
+          note: t.note ?? '',
+        }))
+      : [{ title: '', durationMinutes: '', note: '' }],
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const update = (index: number, patch: Partial<TaskDraftRow>) =>
+    setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+
+  const filled = rows.filter((r) => r.title.trim());
+  const totalMinutes = filled.reduce((sum, r) => sum + (Number(r.durationMinutes) || 0), 0);
+
+  const save = async () => {
+    const invalid = filled.find((r) => !(Number(r.durationMinutes) > 0));
+    if (invalid) {
+      setError(`Nhiệm vụ "${invalid.title}" chưa có thời gian thực hiện hợp lệ (phút, > 0).`);
+      return;
+    }
+    setError(null);
+    try {
+      const tasks: EquipmentTaskItem[] = filled.map((r) => ({
+        title: r.title.trim(),
+        durationMinutes: Number(r.durationMinutes),
+        ...(r.note.trim() ? { note: r.note.trim() } : {}),
+      }));
+      await setTemplate.mutateAsync({ partId: part.id, tasks });
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err, 'Lưu danh sách nhiệm vụ thất bại.'));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900">Thông tin công việc theo thiết bị</h3>
+            <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
+              {part.name} · <span className="font-mono">{part.code}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-700">
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+
+        <div className="custom-scrollbar flex-1 space-y-2 overflow-y-auto px-5 py-4">
+          <p className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-snug text-violet-800">
+            Danh sách này được lưu dạng <b>JSON</b> gắn với thiết bị. Mỗi khi thiết bị sinh Lệnh
+            công việc, chuỗi JSON được đính kèm vào Lệnh — và bước giữ vai trò <b>E</b> chọn{' '}
+            <b>“Mặc định theo thiết bị”</b> sẽ lấy đúng các đầu việc này để giao cho nhân viên.
+          </p>
+
+          <div className="hidden gap-2 px-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
+            <span className="flex-1">Nhiệm vụ</span>
+            <span className="w-24 shrink-0">Thời gian</span>
+            <span className="w-48 shrink-0">Ghi chú</span>
+            <span className="w-8 shrink-0" />
+          </div>
+
+          {rows.map((row, index) => (
+            <div key={index} className="flex flex-wrap items-start gap-2 sm:flex-nowrap">
+              <input
+                value={row.title}
+                onChange={(e) => update(index, { title: e.target.value })}
+                placeholder={`Nhiệm vụ ${index + 1}`}
+                className="min-w-40 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium focus:border-violet-600 focus:outline-none"
+              />
+              <div className="relative w-24 shrink-0">
+                <input
+                  type="number"
+                  min={1}
+                  value={row.durationMinutes}
+                  onChange={(e) => update(index, { durationMinutes: e.target.value })}
+                  placeholder="phút"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-3 pr-8 text-[11px] font-medium focus:border-violet-600 focus:outline-none"
+                />
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-slate-400">
+                  ph
+                </span>
+              </div>
+              <input
+                value={row.note}
+                onChange={(e) => update(index, { note: e.target.value })}
+                placeholder="Ghi chú (không bắt buộc)"
+                className="w-full shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium focus:border-violet-600 focus:outline-none sm:w-48"
+              />
+              <button
+                onClick={() => setRows(rows.filter((_, i) => i !== index))}
+                title="Xoá nhiệm vụ"
+                className="shrink-0 p-2 text-slate-400 hover:text-rose-600"
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={() => setRows([...rows, { title: '', durationMinutes: '', note: '' }])}
+            className="flex items-center gap-1 text-[11px] font-bold text-violet-600 hover:text-violet-700"
+          >
+            <span className="material-symbols-outlined text-sm">add</span> Thêm nhiệm vụ
+          </button>
+
+          {error && (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3">
+          <span className="text-[11px] font-semibold text-slate-500">
+            {filled.length} nhiệm vụ · tổng thời gian {Math.floor(totalMinutes / 60)}g
+            {totalMinutes % 60}p
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Huỷ
+            </button>
+            <button
+              onClick={save}
+              disabled={setTemplate.isPending}
+              className="rounded-xl bg-violet-600 px-5 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {setTemplate.isPending ? 'Đang lưu…' : 'Lưu danh sách'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ onMenuToggle }) => {
   const { data: parts = [], isLoading } = useMaintenanceParts();
   const { data: tree = [] } = useOrgUnitTree();
@@ -47,8 +258,15 @@ export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ on
   const [draft, setDraft] = useState<Record<string, DraftRow>>({});
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [newPart, setNewPart] = useState({ code: '', name: '', orgUnitId: '' });
+  const [templateForPartId, setTemplateForPartId] = useState<string | null>(null);
 
   const orgUnits = useMemo(() => flattenTree(tree), [tree]);
+  const orderedParts = useMemo(() => orderByHierarchy(parts), [parts]);
+  // Tra lại theo id chứ không giữ tham chiếu: sau khi lưu JSON, danh sách được
+  // nạp lại và modal phải thấy dữ liệu mới nếu người dùng mở lại ngay.
+  const templatePart = templateForPartId
+    ? (parts.find((p) => p.id === templateForPartId) ?? null)
+    : null;
   // Only Execution Flows make sense as a Work Order target.
   const executionWorkflows = useMemo(
     () => workflows.filter((w) => w.kind !== 'process'),
@@ -197,16 +415,34 @@ export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ on
                     </td>
                   </tr>
                 )}
-                {parts.map((part) => {
+                {orderedParts.map(({ part, depth }) => {
                   const row = draft[part.id];
+                  const taskCount = part.taskTemplate?.length ?? 0;
                   return (
                     <tr key={part.id} className="bg-white hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 h-14 border-r border-slate-200">
-                        <div className="text-xs font-bold text-slate-800 truncate">{part.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">{part.code}</div>
+                        <div
+                          className="flex items-center gap-1.5"
+                          style={{ paddingLeft: depth * 14 }}
+                        >
+                          <span
+                            title={ASSET_KIND_LABEL[part.assetKind]}
+                            className="material-symbols-outlined shrink-0 text-[14px] leading-none text-slate-400"
+                          >
+                            {ASSET_KIND_ICON[part.assetKind]}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-bold text-slate-800">
+                              {part.name}
+                            </div>
+                            <div className="font-mono text-[10px] text-slate-400">{part.code}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 border-r border-slate-200 text-xs text-slate-600 font-medium">
-                        {part.orgUnit?.title ?? '—'}
+                        {part.orgUnit?.title ?? (
+                          <span className="text-slate-400 italic">kế thừa cấp trên</span>
+                        )}
                       </td>
                       {FREQUENCIES.map((freq) => {
                         const checked = row?.frequencies.has(freq.id) ?? false;
@@ -231,7 +467,7 @@ export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ on
                           </td>
                         );
                       })}
-                      <td className="px-4">
+                      <td className="px-4 py-2">
                         <select
                           value={row?.workflowId ?? ''}
                           onChange={(e) => setWorkflow(part.id, e.target.value)}
@@ -244,6 +480,27 @@ export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ on
                             </option>
                           ))}
                         </select>
+                        {/* BRD 3 US 2.1 AC2 — action "Thêm thông tin công việc". */}
+                        <button
+                          onClick={() => setTemplateForPartId(part.id)}
+                          title={
+                            taskCount > 0
+                              ? `Đã khai ${taskCount} nhiệm vụ — bấm để sửa`
+                              : 'Khai danh sách nhiệm vụ và thời gian thực hiện (lưu dạng JSON)'
+                          }
+                          className={`mt-1 flex w-full items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold transition-colors ${
+                            taskCount > 0
+                              ? 'border-violet-300 bg-violet-50 text-violet-700 hover:border-violet-500'
+                              : 'border-dashed border-slate-300 bg-white text-slate-400 hover:border-violet-400 hover:text-violet-600'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[13px] leading-none">
+                            {taskCount > 0 ? 'checklist' : 'add_task'}
+                          </span>
+                          {taskCount > 0
+                            ? `${taskCount} nhiệm vụ (JSON)`
+                            : 'Thêm thông tin công việc'}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -295,6 +552,10 @@ export const MaintenanceConfigView: React.FC<MaintenanceConfigViewProps> = ({ on
           </div>
         </div>
       </main>
+
+      {templatePart && (
+        <TaskTemplateModal part={templatePart} onClose={() => setTemplateForPartId(null)} />
+      )}
 
       {toast && (
         <div

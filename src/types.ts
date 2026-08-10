@@ -5,6 +5,7 @@ export type NavTab =
   | 'maintenance-dashboard'
   | 'org-chart'
   | 'raci'
+  | 'asset-tree'
   | 'maintenance-config';
 
 // --- RACI Matrix Types ---
