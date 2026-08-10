@@ -63,6 +63,7 @@ describe('TasksService.spawnSubFlowsForCompletedSteps', () => {
       workflowsService as any,
       {} as any,
       { record: jest.fn().mockResolvedValue(undefined) } as any, // ActivityService
+      {} as any, // UsersService
     );
 
     createSpy = jest.spyOn(service, 'create').mockResolvedValue({ id: 'child-1' } as any);

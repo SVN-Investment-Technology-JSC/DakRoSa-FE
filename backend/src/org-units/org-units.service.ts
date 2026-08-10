@@ -9,6 +9,7 @@ import { CreateOrgUnitDto } from './dto/create-org-unit.dto';
 import { UpdateOrgUnitDto } from './dto/update-org-unit.dto';
 import { CreateOrgUnitTypeDto } from './dto/create-org-unit-type.dto';
 import { User } from '../users/user.entity';
+import type { RoleLetter } from '../raci/role-letter';
 
 /** A person the caller is allowed to hand work to. */
 export interface SubordinateRef {
@@ -47,6 +48,29 @@ export class OrgUnitsService {
       relations: ['user', 'position'],
       order: { position: { rank: 'ASC' } },
     });
+  }
+
+  /** Every unit `userId` belongs to, either as a rostered member or as its head. */
+  async findUnitsOfUser(userId: string): Promise<OrgUnit[]> {
+    const memberships = await this.membersRepository.find({
+      where: { userId },
+      relations: ['orgUnit'],
+    });
+    const byId = new Map<string, OrgUnit>();
+    for (const m of memberships) if (m.orgUnit) byId.set(m.orgUnit.id, m.orgUnit);
+    for (const unit of await this.findUnitsHeadedBy(userId)) byId.set(unit.id, unit);
+    return [...byId.values()];
+  }
+
+  /**
+   * The user's SMALLEST unit — deepest level wins, because that is the team a
+   * person actually works in. Someone who heads a Ban and is also rostered on a
+   * Tổ is scoped to the Tổ.
+   */
+  async findSmallestUnitOfUser(userId: string): Promise<OrgUnit | null> {
+    const units = await this.findUnitsOfUser(userId);
+    if (units.length === 0) return null;
+    return units.reduce((deepest, u) => (u.level > deepest.level ? u : deepest));
   }
 
   /** Members holding a specific position inside one org unit — the BRD's position-based routing. */
@@ -217,14 +241,39 @@ export class OrgUnitsService {
    *  - position set ... every holder of that position in the unit; if the seat is
    *                     empty, escalate to the unit head
    *  - unit only ...... the unit head, escalating up the tree when it has none
+   *
+   * Chữ S là ngoại lệ có chủ ý. S = quyền MỞ đơn, không phải quyền xử lý một
+   * đơn đang chạy, nên nó không có gì để "giao xuống": dồn S về trưởng đơn vị
+   * sẽ biến mọi yêu cầu của nhân viên thành việc của trưởng. Vì vậy gán S cho
+   * một đơn vị nghĩa là CẢ đơn vị đó được mở đơn.
    */
   async resolveAssignees(target: {
     orgUnitId: string;
     positionId?: string | null;
     userId?: string | null;
+    roleLetter?: RoleLetter;
   }): Promise<Array<{ userId: string; isEscalated: boolean }>> {
     if (target.userId) {
       return [{ userId: target.userId, isEscalated: false }];
+    }
+
+    if (!target.positionId && target.roleLetter === 'S') {
+      const userIds = new Set<string>();
+      for (const m of await this.findMembers(target.orgUnitId)) userIds.add(m.userId);
+      const unit = await this.findOne(target.orgUnitId);
+      if (unit.headUserId) userIds.add(unit.headUserId);
+      // Gán S cho một Ban nghĩa là cả Ban — kể cả các Tổ bên dưới. Chỉ lấy đúng
+      // roster của Ban sẽ chỉ ra mỗi trưởng Ban, vì nhân viên đều nằm ở Tổ.
+      for (const m of await this.findDescendantMembers(target.orgUnitId)) userIds.add(m.userId);
+      for (const d of await this.findDescendants(target.orgUnitId)) {
+        if (d.headUserId) userIds.add(d.headUserId);
+      }
+      // Đơn vị rỗng vẫn phải có người mở được đơn — rơi về quy tắc chung.
+      if (userIds.size === 0) {
+        const head = await this.resolveUnitHead(target.orgUnitId);
+        return head ? [head] : [];
+      }
+      return [...userIds].map((userId) => ({ userId, isEscalated: false }));
     }
 
     if (target.positionId) {

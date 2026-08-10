@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrgUnit } from './org-unit.entity';
 import { OrgUnitClosure } from './org-unit-closure.entity';
@@ -13,7 +13,7 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([OrgUnit, OrgUnitClosure, OrgUnitType, OrgUnitMember]),
-    AuthModule,
+    forwardRef(() => AuthModule),
     UsersModule,
   ],
   controllers: [OrgUnitsController, OrgUnitTypesController],

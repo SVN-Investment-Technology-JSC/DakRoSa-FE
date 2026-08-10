@@ -13,7 +13,7 @@ import { MaintenanceDashboardView } from './components/MaintenanceDashboardView'
 import { CanvasView } from './components/CanvasView';
 
 export default function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavTab>('workspace');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -23,6 +23,11 @@ export default function App() {
   if (!isAuthenticated) {
     return <LoginView />;
   }
+
+  // Hiding the nav entry is not enough: the tab could still be pointing at an
+  // admin view (stale state, a role change mid-session). Fall back to Workspace.
+  const ADMIN_TABS: NavTab[] = ['raci', 'org-chart', 'maintenance-dashboard', 'maintenance-config'];
+  const visibleTab: NavTab = !isAdmin && ADMIN_TABS.includes(currentTab) ? 'workspace' : currentTab;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-on-background font-sans">
@@ -39,11 +44,11 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 md:ml-64 flex flex-col h-full overflow-hidden min-w-0">
-        {currentTab === 'workspace' && (
+        {visibleTab === 'workspace' && (
           <WorkspaceView onMenuToggle={() => setIsMobileOpen(true)} />
         )}
 
-        {currentTab === 'canvas' && (
+        {visibleTab === 'canvas' && (
           <CanvasView
             nodes={canvasNodes}
             onUpdateNodes={setCanvasNodes}
@@ -51,22 +56,22 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'maintenance-dashboard' && (
+        {visibleTab === 'maintenance-dashboard' && (
           <MaintenanceDashboardView
             onOpenConfig={() => setCurrentTab('maintenance-config')}
             onMenuToggle={() => setIsMobileOpen(true)}
           />
         )}
 
-        {currentTab === 'org-chart' && (
+        {visibleTab === 'org-chart' && (
           <OrgChartView onMenuToggle={() => setIsMobileOpen(true)} />
         )}
 
-        {currentTab === 'raci' && (
+        {visibleTab === 'raci' && (
           <RsacieMatrixView onMenuToggle={() => setIsMobileOpen(true)} />
         )}
 
-        {currentTab === 'maintenance-config' && (
+        {visibleTab === 'maintenance-config' && (
           <MaintenanceConfigView onMenuToggle={() => setIsMobileOpen(true)} />
         )}
       </div>

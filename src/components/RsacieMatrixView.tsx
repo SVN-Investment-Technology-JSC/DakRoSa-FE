@@ -22,6 +22,7 @@ import {
   headerRows,
   indexUnits,
   leafColumns,
+  pruneToRelevant,
   type InheritedTag,
   sortLetters,
   treeDepth,
@@ -77,22 +78,41 @@ const LetterButton: React.FC<{
 
 const KIND_ICON: Record<ColumnNode['kind'], string> = {
   unit: 'corporate_fare',
-  position: 'badge',
   user: 'person',
 };
 
 const KIND_HINT: Record<ColumnNode['kind'], string> = {
   unit: 'Giao cho Trưởng đơn vị — trưởng có thể giao tiếp xuống cấp dưới',
-  position: 'Cấp chức vụ → giao mọi người giữ chức vụ này',
   user: 'Cấp cá nhân → giao đích danh',
 };
 
-/** Renders a set of tags as the comma-joined text used by aggregate cells. */
+/**
+ * Renders a set of tags as the comma-joined text used by aggregate cells.
+ *
+ * Every C is printed with its OWN rollback code. Collapsing them to a single
+ * letter (the old behaviour) hid the fact that a group holds two Checkers
+ * returning to different steps — exactly the thing an aggregate cell exists to
+ * reveal. Only entries that are identical after formatting are de-duplicated.
+ */
 function joinLetters(tags: ApiRaciAssignment[]): string {
-  const cTag = tags.find((t) => t.roleLetter === 'C');
-  return sortLetters(tags.map((t) => t.roleLetter))
-    .map((l) => (l === 'C' && cTag?.fixedRollbackStep ? `C[${cTag.fixedRollbackStep.stepCode}]` : l))
-    .join(', ');
+  const labelOf = (t: ApiRaciAssignment) =>
+    t.roleLetter === 'C' && t.fixedRollbackStep
+      ? `C[${t.fixedRollbackStep.stepCode}]`
+      : t.roleLetter;
+
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  // sortLetters gives the RSACIE order; within one letter, keep every distinct
+  // rollback target, in the order they were configured.
+  for (const letter of sortLetters(tags.map((t) => t.roleLetter))) {
+    for (const tag of tags.filter((t) => t.roleLetter === letter)) {
+      const label = labelOf(tag);
+      if (seen.has(label)) continue;
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels.join(', ');
 }
 
 // --- Step cell: exactly ONE letter, unless it is an aggregate of deeper levels ---
@@ -500,6 +520,8 @@ interface WorkflowRowsProps {
   isExpanded: boolean;
   onToggle: () => void;
   isProcess: boolean;
+  /** Reports this workflow's tags upward so the table can hide unrelated columns. */
+  onAssignments: (workflowId: string, assignments: ApiRaciAssignment[]) => void;
 }
 
 const WorkflowRows: React.FC<WorkflowRowsProps> = ({
@@ -510,6 +532,7 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
   isExpanded,
   onToggle,
   isProcess,
+  onAssignments,
 }) => {
   const { data: detail } = useWorkflow(workflow.id);
   const addStep = useAddWorkflowStep(workflow.id);
@@ -518,6 +541,16 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
 
   const steps = [...(detail?.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
   const allAssignments = steps.flatMap((s) => s.raciAssignments ?? []);
+
+  // Cột nào liên quan tới quy trình này chỉ biết được sau khi chi tiết quy
+  // trình tải xong, mà việc đó lại nằm trong chính component này. Signature là
+  // danh sách id tag, nên effect chỉ chạy lại khi cấu hình thực sự đổi chứ
+  // không phải mỗi lần render.
+  const assignmentSignature = allAssignments.map((a) => a.id).join(',');
+  React.useEffect(() => {
+    onAssignments(workflow.id, allAssignments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow.id, assignmentSignature]);
 
   // Computed once per render, not once per cell — this walks the whole column
   // tree, so calling it inside the column loop would be quadratic.
@@ -746,13 +779,34 @@ const MatrixTable: React.FC<MatrixTableProps> = ({
   createKindOptions,
 }) => {
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(new Set());
+  const [showAllColumns, setShowAllColumns] = useState(false);
+  const [assignmentsByWorkflow, setAssignmentsByWorkflow] = useState<
+    Record<string, ApiRaciAssignment[]>
+  >({});
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newKind, setNewKind] = useState<WorkflowKind>(createKindOptions[0]);
 
-  const depth = Math.max(treeDepth(tree), 1);
-  const rows = headerRows(tree, depth);
-  const columns = leafColumns(tree);
+  const collectAssignments = React.useCallback(
+    (workflowId: string, assignments: ApiRaciAssignment[]) =>
+      setAssignmentsByWorkflow((prev) => ({ ...prev, [workflowId]: assignments })),
+    [],
+  );
+
+  // Sổ dọc một quy trình = đang đọc riêng quy trình đó, nên các cột đơn vị
+  // không dính dáng gì chỉ làm bảng rộng thêm. Khi thu gọn hết thì bảng trở về
+  // đầy đủ; "Hiện đủ cột" là đường thoát để gán role cho một đơn vị chưa có tag
+  // nào — nếu không, cột đó đã bị ẩn và không bao giờ gán được.
+  const visibleTree = useMemo(() => {
+    if (showAllColumns || expandedWorkflows.size === 0) return tree;
+    const relevant = [...expandedWorkflows].flatMap((id) => assignmentsByWorkflow[id] ?? []);
+    return pruneToRelevant(tree, relevant, unitById) ?? tree;
+  }, [tree, unitById, showAllColumns, expandedWorkflows, assignmentsByWorkflow]);
+
+  const isFiltered = visibleTree !== tree;
+  const depth = Math.max(treeDepth(visibleTree), 1);
+  const rows = headerRows(visibleTree, depth);
+  const columns = leafColumns(visibleTree);
 
   const toggleWorkflow = (id: string) =>
     setExpandedWorkflows((prev) => {
@@ -782,6 +836,28 @@ const MatrixTable: React.FC<MatrixTableProps> = ({
           </div>
           <p className="mt-1 text-xs font-medium text-slate-500">{subtitle}</p>
         </div>
+        {expandedWorkflows.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAllColumns((v) => !v)}
+            title={
+              showAllColumns
+                ? 'Chỉ hiện các đơn vị có tham gia quy trình đang mở'
+                : 'Hiện lại toàn bộ đơn vị để gán role mới'
+            }
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-xs transition-colors hover:border-blue-500 hover:text-blue-600"
+          >
+            <span className="material-symbols-outlined text-sm">
+              {showAllColumns ? 'filter_alt' : 'filter_alt_off'}
+            </span>
+            {showAllColumns ? 'Ẩn cột không liên quan' : 'Hiện đủ cột'}
+            {isFiltered && (
+              <span className="rounded-full bg-blue-50 px-1.5 text-[10px] font-bold text-blue-700">
+                đang lọc
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       <div className="custom-scrollbar overflow-x-auto">
@@ -805,11 +881,9 @@ const MatrixTable: React.FC<MatrixTableProps> = ({
                     className={`min-w-28 border-b border-r border-slate-200 px-2 py-2 text-center align-middle text-xs font-bold ${
                       node.children.length
                         ? 'bg-slate-100/80 text-slate-800'
-                        : node.kind === 'position'
-                          ? 'text-indigo-700'
-                          : node.kind === 'user'
-                            ? 'text-teal-700'
-                            : 'text-slate-700'
+                        : node.kind === 'user'
+                          ? 'text-teal-700'
+                          : 'text-slate-700'
                     }`}
                     title={node.subtitle ? `${node.title} — ${node.subtitle}` : node.title}
                   >
@@ -817,7 +891,16 @@ const MatrixTable: React.FC<MatrixTableProps> = ({
                       <span className="material-symbols-outlined text-[12px] opacity-50">
                         {KIND_ICON[node.kind]}
                       </span>
-                      <span className="truncate">{node.title}</span>
+                      {/* Chức vụ trên, tên người dưới — hai hàng, giống nhau
+                          cho cả trưởng đơn vị lẫn nhân viên. */}
+                      <span className="min-w-0 flex flex-col leading-tight">
+                        <span className="truncate">{node.title}</span>
+                        {node.subtitle && !node.children.length && (
+                          <span className="truncate text-[10px] font-semibold text-slate-500">
+                            {node.subtitle}
+                          </span>
+                        )}
+                      </span>
                       {node.toggleKey && (
                         <button
                           type="button"
@@ -847,10 +930,11 @@ const MatrixTable: React.FC<MatrixTableProps> = ({
               <WorkflowRows
                 key={wf.id}
                 workflow={wf}
-                tree={tree}
+                tree={visibleTree}
                 columns={columns}
                 unitById={unitById}
                 isProcess={isProcess}
+                onAssignments={collectAssignments}
                 isExpanded={expandedWorkflows.has(wf.id)}
                 onToggle={() => toggleWorkflow(wf.id)}
               />

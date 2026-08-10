@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { ExecutionPanel } from './ExecutionPanel';
 import { ActivityLogPanel } from './ActivityLogPanel';
+import { StepDetailModal } from './StepDetailModal';
 import {
   ApiTaskInstance,
   ApiTaskStepInstance,
@@ -223,9 +224,23 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ task, activeStep }) => {
   const [showDelegate, setShowDelegate] = useState(false);
   const [delegateToUserId, setDelegateToUserId] = useState('');
 
+  // Computed BEFORE the hooks below, and before the early return, because the
+  // rollback query has to be gated on the letter actually being acted as — not
+  // on `selectedLetter`, which stays empty whenever the user holds a single
+  // role and is therefore never asked to pick one.
+  const myAssignments = (activeStep?.assignees ?? []).filter((a) => a.userId === user?.id);
+  const heldLetters = myAssignments.map((a) => a.roleLetter);
+  const rejectCapableLetters = heldLetters.filter((l) => l === 'A' || l === 'C');
+  const rejectLetter =
+    selectedLetter && rejectCapableLetters.includes(selectedLetter)
+      ? selectedLetter
+      : rejectCapableLetters.length === 1
+        ? rejectCapableLetters[0]
+        : '';
+
   const { data: rollbackTargets } = useTaskRollbackTargets(
-    activeStep && selectedLetter === 'A' ? task.id : undefined,
-    activeStep && selectedLetter === 'A' ? activeStep.id : undefined,
+    activeStep && rejectLetter === 'A' ? task.id : undefined,
+    activeStep && rejectLetter === 'A' ? activeStep.id : undefined,
   );
   const { data: delegationCandidates } = useDelegationCandidates(
     showDelegate ? task.id : undefined,
@@ -240,9 +255,6 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ task, activeStep }) => {
     );
   }
 
-  const myAssignments = (activeStep.assignees ?? []).filter((a) => a.userId === user?.id);
-  const heldLetters = myAssignments.map((a) => a.roleLetter);
-  const rejectCapableLetters = heldLetters.filter((l) => l === 'A' || l === 'C');
   const delegateCapableLetters = heldLetters.filter((l) => l === 'R' || l === 'C');
   const isActingAsEscalated = myAssignments.some((a) => a.isEscalated);
   const delegatedAssignments = myAssignments.filter((a) => a.delegatedFromUser);
@@ -257,12 +269,6 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ task, activeStep }) => {
   }
 
   const effectiveLetter = selectedLetter || (heldLetters.length === 1 ? heldLetters[0] : '');
-  const rejectLetter =
-    selectedLetter && rejectCapableLetters.includes(selectedLetter)
-      ? selectedLetter
-      : rejectCapableLetters.length === 1
-        ? rejectCapableLetters[0]
-        : '';
 
   const handleApprove = async () => {
     if (heldLetters.length > 1 && !effectiveLetter) {
@@ -500,6 +506,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [detailStepId, setDetailStepId] = useState<string | null>(null);
 
   const { data: tasks, isLoading: tasksLoading } = useTasks(
     statusFilter !== 'all' ? { status: statusFilter } : undefined,
@@ -516,6 +523,9 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
   const steps = [...(task?.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
   // A step in Rework is still awaiting action, so it counts as the active one.
   const activeStep = steps.find((s) => isActionableStepStatus(s.status));
+  // Resolved from the live list, not stored: switching tasks must not leave the
+  // modal open on a step belonging to the task you just navigated away from.
+  const detailStep = steps.find((s) => s.id === detailStepId);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 min-w-0">
@@ -656,7 +666,13 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     {steps.map((step) => (
-                      <div key={step.id} className={`p-4 rounded-xl border flex flex-col gap-2 ${STEP_STATUS_STYLES[step.status]}`}>
+                      <button
+                        key={step.id}
+                        type="button"
+                        onClick={() => setDetailStepId(step.id)}
+                        title="Xem chi tiết bước"
+                        className={`p-4 rounded-xl border flex flex-col gap-2 text-left transition-shadow hover:shadow-md hover:ring-2 hover:ring-blue-300 ${STEP_STATUS_STYLES[step.status]}`}
+                      >
                         <div className="flex justify-between items-center">
                           <span className="text-[10px] font-mono font-bold uppercase">Bước {step.stepOrder}</span>
                           {step.status === 'Completed' && <span className="material-symbols-outlined text-base">check_circle</span>}
@@ -677,7 +693,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
                         <div className="w-full bg-white/60 rounded-full h-1.5 overflow-hidden">
                           <div className="bg-current h-1.5 transition-all" style={{ width: `${step.progress}%` }} />
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -696,6 +712,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
           )}
         </div>
       </main>
+
+      {task && detailStep && (
+        <StepDetailModal task={task} step={detailStep} onClose={() => setDetailStepId(null)} />
+      )}
 
       {showCreateModal && (
         <CreateTaskModal

@@ -26,6 +26,7 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { id } });
   }
 
+
   async create(data: {
     email: string;
     passwordHash: string;

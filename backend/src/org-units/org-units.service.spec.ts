@@ -107,3 +107,88 @@ describe('OrgUnitsService.findSubordinates', () => {
     await expect(service.findSubordinates('u-staff')).resolves.toEqual([]);
   });
 });
+
+/**
+ * Chữ S là ngoại lệ: nó là quyền MỞ đơn, không phải quyền xử lý đơn, nên nó
+ * không dồn về trưởng đơn vị như mọi chữ khác.
+ */
+describe('OrgUnitsService.resolveAssignees — chữ S', () => {
+  let service: OrgUnitsService;
+  let ownMembers: Array<{ userId: string }>;
+  let descendantMembers: Array<{ userId: string }>;
+
+  beforeEach(() => {
+    ownMembers = [];
+    descendantMembers = [];
+    const membersRepository = {
+      find: jest.fn().mockImplementation(async () => ownMembers),
+      createQueryBuilder: jest.fn(() => {
+        const qb: Record<string, unknown> = {};
+        for (const m of ['leftJoinAndSelect', 'innerJoin', 'where', 'andWhere']) {
+          qb[m] = jest.fn(() => qb);
+        }
+        qb.getMany = jest.fn(async () => descendantMembers);
+        return qb;
+      }),
+    };
+
+    service = new OrgUnitsService(
+      { find: jest.fn().mockResolvedValue([]) } as any,
+      { find: jest.fn().mockResolvedValue([]) } as any,
+      {} as any,
+      membersRepository as any,
+    );
+    jest.spyOn(service, 'findDescendants').mockResolvedValue([]);
+    jest
+      .spyOn(service, 'findOne')
+      .mockResolvedValue({ id: 'ban', title: 'Ban', headUserId: 'u-head' } as never);
+  });
+
+  const ids = (r: Array<{ userId: string }>) => r.map((x) => x.userId).sort();
+
+  it('gán S cho đơn vị thì cả đơn vị — kể cả các tổ bên dưới — đều có S', async () => {
+    ownMembers = [{ userId: 'u-head' }];
+    descendantMembers = [{ userId: 'u-a' }, { userId: 'u-b' }];
+
+    const result = await service.resolveAssignees({ orgUnitId: 'ban', roleLetter: 'S' });
+
+    expect(ids(result)).toEqual(['u-a', 'u-b', 'u-head']);
+    expect(result.every((r) => !r.isEscalated)).toBe(true);
+  });
+
+  it('các chữ khác vẫn chỉ về trưởng đơn vị', async () => {
+    ownMembers = [{ userId: 'u-head' }];
+    descendantMembers = [{ userId: 'u-a' }];
+
+    const result = await service.resolveAssignees({ orgUnitId: 'ban', roleLetter: 'R' });
+
+    expect(ids(result)).toEqual(['u-head']);
+  });
+
+  it('S gán đích danh một người thì vẫn chỉ người đó', async () => {
+    descendantMembers = [{ userId: 'u-a' }];
+
+    const result = await service.resolveAssignees({
+      orgUnitId: 'ban',
+      userId: 'u-named',
+      roleLetter: 'S',
+    });
+
+    expect(ids(result)).toEqual(['u-named']);
+  });
+
+  it('S gán theo chức vụ vẫn đi theo luật chức vụ, không lan ra cả đơn vị', async () => {
+    jest
+      .spyOn(service, 'findMembersByPosition')
+      .mockResolvedValue([{ userId: 'u-pos' }] as never);
+    descendantMembers = [{ userId: 'u-a' }];
+
+    const result = await service.resolveAssignees({
+      orgUnitId: 'ban',
+      positionId: 'p-1',
+      roleLetter: 'S',
+    });
+
+    expect(ids(result)).toEqual(['u-pos']);
+  });
+});

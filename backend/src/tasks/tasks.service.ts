@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { TaskInstance } from './task-instance.entity';
 import { TaskStepInstance } from './task-step-instance.entity';
@@ -9,9 +9,11 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { OrgUnitsService } from '../org-units/org-units.service';
 import { ActivityService } from '../activity/activity.service';
+import { UsersService } from '../users/users.service';
 import { OrgUnit } from '../org-units/org-unit.entity';
 import type { TaskStatus } from './task-status';
 import type { TaskOrigin } from './task-origin';
+import type { RoleLetter } from '../raci/role-letter';
 
 export interface FindAllTasksFilter {
   status?: TaskStatus;
@@ -30,9 +32,10 @@ export class TasksService {
     private readonly workflowsService: WorkflowsService,
     private readonly orgUnitsService: OrgUnitsService,
     private readonly activityService: ActivityService,
+    private readonly usersService: UsersService,
   ) {}
 
-  findAll(filter: FindAllTasksFilter, userId: string): Promise<TaskInstance[]> {
+  async findAll(filter: FindAllTasksFilter, userId: string): Promise<TaskInstance[]> {
     const qb = this.tasksRepository
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.initiator', 'initiator')
@@ -49,7 +52,64 @@ export class TasksService {
       }).innerJoin('activeStep.assignees', 'assignee', 'assignee.user_id = :userId', { userId });
     }
 
+    await this.applyOrgUnitScope(qb, userId);
+
     return qb.getMany();
+  }
+
+  /**
+   * Workspace chỉ hiện công việc mà ĐƠN VỊ NHỎ NHẤT của người dùng có tham gia.
+   *
+   * "Tham gia" nghĩa là một trong ba điều — đơn hướng về chính đơn vị đó, người
+   * dùng tự mở đơn, hoặc một thành viên bất kỳ của đơn vị đang giữ role ở một
+   * bước nào đó. Điều kiện thứ ba mới là điều kiện chính: nó cho cả tổ nhìn
+   * thấy đơn của tổ mình chứ không chỉ riêng người được giao.
+   *
+   * Ba trường hợp KHÔNG lọc:
+   *  - `admin` — quản trị viên phải thấy toàn hệ thống.
+   *  - Người không thuộc đơn vị nào (chưa được xếp vào tổ). Lọc theo tập rỗng
+   *    sẽ cho họ một Workspace trắng, không phân biệt được với "hệ thống hỏng".
+   *  - `assignedToMe` — đã hẹp hơn hẳn, thêm lọc đơn vị chỉ tốn một join.
+   */
+  private async applyOrgUnitScope(
+    qb: SelectQueryBuilder<TaskInstance>,
+    userId: string,
+  ): Promise<void> {
+    const user = await this.usersService.findById(userId);
+    if ((user?.roles ?? []).some((r) => r.name === 'admin')) return;
+
+    const unit = await this.orgUnitsService.findSmallestUnitOfUser(userId);
+    if (!unit) return;
+
+    const memberIds = new Set<string>([userId]);
+    for (const m of await this.orgUnitsService.findMembers(unit.id)) memberIds.add(m.userId);
+    if (unit.headUserId) memberIds.add(unit.headUserId);
+    // Cấp dưới cũng tính là "đơn vị mình tham gia": khi trưởng đơn vị giao việc
+    // xuống tổ nhỏ hơn, người giữ role đổi sang nhân viên tổ đó — nếu chỉ lọc
+    // theo đúng roster của đơn vị mình thì đơn vừa giao đi sẽ biến mất khỏi
+    // Workspace của chính người đã giao.
+    const descendantIds = new Set<string>();
+    for (const m of await this.orgUnitsService.findDescendantMembers(unit.id)) {
+      memberIds.add(m.userId);
+      descendantIds.add(m.orgUnitId);
+    }
+    for (const d of await this.orgUnitsService.findDescendants(unit.id)) {
+      if (d.headUserId) memberIds.add(d.headUserId);
+      descendantIds.add(d.id);
+    }
+
+    qb.andWhere(
+      `(task.orgUnitId IN (:...scopeUnitIds)
+        OR task.initiatorUserId IN (:...scopeUserIds)
+        OR EXISTS (
+          SELECT 1 FROM task_step_instances scoped_step
+          JOIN task_step_assignees scoped_assignee
+            ON scoped_assignee.task_step_instance_id = scoped_step.id
+          WHERE scoped_step.task_id = task.id
+            AND scoped_assignee.user_id IN (:...scopeUserIds)
+        ))`,
+      { scopeUnitIds: [unit.id, ...descendantIds], scopeUserIds: [...memberIds] },
+    );
   }
 
   async findOne(id: string): Promise<TaskInstance> {
@@ -213,6 +273,7 @@ export class TasksService {
       orgUnitId: string;
       positionId?: string | null;
       userId?: string | null;
+      roleLetter: RoleLetter;
     }) => this.orgUnitsService.resolveAssignees(assignment);
 
     for (let i = 0; i < stepsSorted.length; i++) {

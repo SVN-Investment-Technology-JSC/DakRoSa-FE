@@ -16,7 +16,7 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
   onCloseMobile,
 }) => {
   const [isAdminExpanded, setIsAdminExpanded] = React.useState(true);
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
 
   const mainItems: Array<{ id: NavTab; label: string; icon: string }> = [
     { id: 'workspace', label: 'Workspace', icon: 'dashboard' },
@@ -95,9 +95,12 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
             })}
           </div>
 
+          {/* Khu Quản trị chỉ dành cho vai trò `admin`. Đây chỉ là lớp ẩn ở
+              giao diện — mọi endpoint bên dưới vẫn tự kiểm quyền riêng. */}
+          {isAdmin && (
+          <>
           <div className="my-2 border-t border-slate-100" />
 
-          {/* Admin Section Grouped */}
           <div>
             <button
               onClick={() => setIsAdminExpanded(!isAdminExpanded)}
@@ -145,6 +148,8 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
               </div>
             )}
           </div>
+          </>
+          )}
         </nav>
 
         {/* Usage Card & Profile */}

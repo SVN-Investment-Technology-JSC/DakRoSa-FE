@@ -3,8 +3,6 @@ import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { PermissionsGuard } from './guards/permissions.guard';
-import { RequirePermissions } from './decorators/require-permissions.decorator';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 @Controller('auth')
@@ -17,16 +15,16 @@ export class AuthController {
     return this.authService.login(user);
   }
 
+  /**
+   * Full profile of the caller: identity + roles + permissions + which org unit
+   * they belong to. The client needs all of it to decide what to show, and it
+   * is deliberately NOT in the JWT so that a role change takes effect without
+   * waiting for the token to expire.
+   */
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req: Request) {
-    return req.user as JwtPayload;
-  }
-
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('org.manage')
-  @Get('admin-check')
-  adminCheck() {
-    return { ok: true };
+    const jwtUser = req.user as JwtPayload;
+    return this.authService.getProfile(jwtUser.sub);
   }
 }

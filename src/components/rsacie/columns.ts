@@ -24,7 +24,7 @@ export interface CellTarget {
   userId?: string;
 }
 
-export type ColumnKind = 'unit' | 'position' | 'user';
+export type ColumnKind = 'unit' | 'user';
 
 export interface ColumnNode {
   key: string;
@@ -39,12 +39,16 @@ export interface ColumnNode {
   children: ColumnNode[];
   /** Unit columns only — who currently heads the unit. Drives tag anchoring. */
   headUserId?: string | null;
-  /** Position columns only — everyone holding that position in the unit. */
-  holderUserIds?: string[];
+  /** Person columns only — which position they hold, for position-level tags. */
+  positionId?: string;
+  /**
+   * True only for a COLLAPSED unit, which stands in for everything beneath it.
+   * A head column is a unit column too, but its staff sit right beside it, so
+   * it must not roll their tags up as if they were its own.
+   */
+  aggregatesSubtree?: boolean;
 }
 
-export const positionColumnKey = (orgUnitId: string, positionId: string) =>
-  `${orgUnitId}::pos::${positionId}`;
 export const userColumnKey = (orgUnitId: string, userId: string) =>
   `${orgUnitId}::usr::${userId}`;
 
@@ -121,7 +125,10 @@ export function deeperAssignments(
   assignments: ApiRaciAssignment[],
   unitById: Map<string, ApiOrgUnitTreeNode>,
 ): ApiRaciAssignment[] {
-  if (column.kind !== 'unit') return [];
+  // A head column is a unit column, but it must never absorb its staff's tags:
+  // once a unit is expanded those people have their own cells, and showing the
+  // same letter on the head as well reads as the head holding it too.
+  if (column.kind !== 'unit' || !column.aggregatesSubtree) return [];
   const node = unitById.get(column.target.orgUnitId);
   if (!node) return [];
   const ids = subtreeUnitIds(node);
@@ -148,9 +155,25 @@ export interface BuildOptions {
 }
 
 /**
- * Builds the grouped header tree. An expanded unit becomes a pure group label
- * whose children are the real data columns; its own unit-level tags are then
- * anchored onto its head column by `inheritedByLeaf`.
+ * "Trưởng" + cấp của đơn vị: Trưởng khối / Trưởng ban / Trưởng tổ.
+ *
+ * The `positions` catalogue only has the generic "Trưởng đơn vị", which reads
+ * identically on every level and makes the header ambiguous. The org unit's
+ * TYPE is what actually distinguishes them.
+ */
+function headTitleFor(node: ApiOrgUnitTreeNode): string {
+  const typeName = node.type?.name?.trim();
+  return typeName ? `Trưởng ${typeName.toLowerCase()}` : 'Trưởng đơn vị';
+}
+
+/**
+ * Builds the grouped header tree.
+ *
+ * An expanded unit becomes a group label whose children are: the head column
+ * (carrying the UNIT's own target), then one column PER PERSON on the roster,
+ * then the sub-units. There is deliberately no intermediate "chức vụ" grouping
+ * level — a position with several holders is shown as several people, each with
+ * their position printed above their name.
  */
 export function buildColumnTree({ roots, expandedKeys, membersByUnit }: BuildOptions): ColumnNode[] {
   const build = (nodes: ApiOrgUnitTreeNode[]): ColumnNode[] =>
@@ -168,12 +191,13 @@ export function buildColumnTree({ roots, expandedKeys, membersByUnit }: BuildOpt
         expanded,
         children: [],
         headUserId: node.headUserId ?? null,
+        // Only a COLLAPSED unit stands in for everything beneath it.
+        aggregatesSubtree: !expanded,
       };
 
       if (!expanded) return base;
 
       const children: ColumnNode[] = [...build(node.children ?? [])];
-      const positionColumns: ColumnNode[] = [];
 
       const head = members.find((m) => m.userId === node.headUserId);
 
@@ -184,58 +208,37 @@ export function buildColumnTree({ roots, expandedKeys, membersByUnit }: BuildOpt
       // level, edit it elsewhere" indirection.
       const headColumn: ColumnNode = {
         key: `${node.id}::head`,
-        title: head?.position?.name ?? 'Trưởng đơn vị',
+        title: headTitleFor(node),
         subtitle: head?.user?.fullName ?? node.head?.fullName ?? 'chưa có trưởng',
         kind: 'unit',
         target: { orgUnitId: node.id },
         expanded: false,
         children: [],
         headUserId: node.headUserId ?? null,
+        // The head column represents the unit itself, but its staff already
+        // have their own columns beside it — so it must NOT roll their tags up.
+        aggregatesSubtree: false,
       };
 
-      const byPosition = new Map<string, ApiOrgUnitMember[]>();
-      for (const m of members) {
-        // The head is already represented by `headColumn`; listing them again
-        // under their position would give the same person two cells.
-        if (m.userId === node.headUserId) continue;
-        const list = byPosition.get(m.positionId) ?? [];
-        list.push(m);
-        byPosition.set(m.positionId, list);
-      }
-      const ordered = Array.from(byPosition.entries()).sort(
-        ([, a], [, b]) => (a[0].position?.rank ?? 100) - (b[0].position?.rank ?? 100),
-      );
+      // One column per person, ordered by seniority. The head is skipped: they
+      // are already `headColumn`, and listing them twice would let the same
+      // person hold two different letters on one step.
+      const staffColumns: ColumnNode[] = members
+        .filter((m) => m.userId !== node.headUserId)
+        .sort((a, b) => (a.position?.rank ?? 100) - (b.position?.rank ?? 100))
+        .map((m) => ({
+          key: userColumnKey(node.id, m.userId),
+          title: m.position?.name ?? 'Nhân viên',
+          subtitle: m.user?.fullName ?? m.user?.email ?? 'Nhân sự',
+          kind: 'user' as const,
+          target: { orgUnitId: node.id, userId: m.userId },
+          expanded: false,
+          children: [],
+          positionId: m.positionId,
+        }));
 
-      for (const [positionId, holders] of ordered) {
-        const posKey = positionColumnKey(node.id, positionId);
-        const posExpanded = expandedKeys.has(posKey);
-        positionColumns.push({
-          key: posKey,
-          title: holders[0].position?.name ?? 'Chức vụ',
-          subtitle: node.title,
-          kind: 'position',
-          target: { orgUnitId: node.id, positionId },
-          toggleKey: posKey,
-          expanded: posExpanded,
-          holderUserIds: holders.map((h) => h.userId),
-          children: posExpanded
-            ? [
-                ...holders.map((h) => ({
-                  key: userColumnKey(node.id, h.userId),
-                  title: h.user?.fullName ?? h.user?.email ?? 'Nhân sự',
-                  subtitle: holders[0].position?.name,
-                  kind: 'user' as const,
-                  target: { orgUnitId: node.id, userId: h.userId },
-                  expanded: false,
-                  children: [],
-                })),
-              ]
-            : [],
-        });
-      }
-
-      // Head first, then the rest of the roster, then sub-units.
-      return { ...base, children: [headColumn, ...positionColumns, ...children] };
+      // Head first, then the roster, then sub-units.
+      return { ...base, children: [headColumn, ...staffColumns, ...children] };
     });
 
   return build(roots);
@@ -254,58 +257,73 @@ export interface InheritedTag {
 }
 
 /**
- * Decides where a group-level tag is shown once its group has been expanded.
+ * Position-level tags, keyed by the person column that displays them.
  *
- * Only POSITIONS need this: a position tag goes to every holder, so when the
- * position is drilled into its holders, one of them has to carry the marker.
- * Units never need it — an expanded unit always keeps its own head column,
- * which carries the unit's target directly.
- */
-function anchorLeafKey(node: ColumnNode): string | undefined {
-  const leaves = leafColumns(node.children);
-  return leaves[0]?.key;
-}
-
-/**
- * Group-level tags, keyed by the leaf column that displays them. Callers merge
- * these into each cell alongside the column's own direct tags.
+ * The matrix no longer has a "chức vụ" column to hold these — every person gets
+ * their own column instead. A position tag routes to EVERY holder at run time,
+ * so it is shown on every holder's column, marked read-only. Data created
+ * before this change (or through the API) therefore stays visible.
  */
 export function inheritedByLeaf(
   nodes: ColumnNode[],
   assignments: ApiRaciAssignment[],
 ): Map<string, InheritedTag[]> {
   const result = new Map<string, InheritedTag[]>();
-
-  const add = (key: string, tag: InheritedTag) => {
-    const list = result.get(key) ?? [];
-    list.push(tag);
-    result.set(key, list);
-  };
+  const positionTags = assignments.filter((a) => a.positionId && !a.userId);
+  if (positionTags.length === 0) return result;
 
   const walk = (node: ColumnNode) => {
-    if (node.children.length > 0) {
-      // Units are skipped: their head column already holds the unit's target.
-      const own =
-        node.kind !== 'position'
-          ? []
-          : assignments.filter(
-              (a) =>
-                a.orgUnitId === node.target.orgUnitId &&
-                (a.positionId ?? undefined) === node.target.positionId &&
-                !a.userId,
-            );
-      const key = own.length > 0 ? anchorLeafKey(node) : undefined;
-      if (key) {
-        for (const assignment of own) {
-          add(key, { assignment, from: 'position', fromTitle: node.title });
+    if (node.kind === 'user' && node.positionId) {
+      for (const assignment of positionTags) {
+        if (
+          assignment.orgUnitId === node.target.orgUnitId &&
+          assignment.positionId === node.positionId
+        ) {
+          const list = result.get(node.key) ?? [];
+          list.push({ assignment, from: 'position', fromTitle: node.title });
+          result.set(node.key, list);
         }
       }
-      node.children.forEach(walk);
     }
+    node.children.forEach(walk);
   };
 
   nodes.forEach(walk);
   return result;
+}
+
+/**
+ * Giữ lại đúng những cột có liên quan tới một tập assignment.
+ *
+ * Dùng khi sổ dọc một quy trình: bảng ma trận rộng theo cả sơ đồ tổ chức, nên
+ * đọc một quy trình cụ thể thường phải cuộn ngang qua hàng loạt cột trống. Một
+ * cột được giữ khi nó có tag trực tiếp, có tag theo chức vụ, hoặc (khi đang thu
+ * gọn) có tag nằm sâu bên trong. Nhóm cha được giữ nếu còn con nào được giữ.
+ *
+ * Trả về `null` khi không còn cột nào — người gọi phải rơi về cây đầy đủ, vì
+ * một quy trình chưa cấu hình gì mà mất sạch cột thì không thể cấu hình được.
+ */
+export function pruneToRelevant(
+  nodes: ColumnNode[],
+  assignments: ApiRaciAssignment[],
+  unitById: Map<string, ApiOrgUnitTreeNode>,
+): ColumnNode[] | null {
+  const inherited = inheritedByLeaf(nodes, assignments);
+
+  const keep = (node: ColumnNode): ColumnNode | null => {
+    if (node.children.length) {
+      const children = node.children.map(keep).filter((c): c is ColumnNode => c !== null);
+      return children.length ? { ...node, children } : null;
+    }
+    const relevant =
+      cellAssignments(node, assignments).length > 0 ||
+      (inherited.get(node.key)?.length ?? 0) > 0 ||
+      deeperAssignments(node, assignments, unitById).length > 0;
+    return relevant ? node : null;
+  };
+
+  const pruned = nodes.map(keep).filter((n): n is ColumnNode => n !== null);
+  return pruned.length ? pruned : null;
 }
 
 /** Flat map of unit id → tree node, for subtree lookups. */

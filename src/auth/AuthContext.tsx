@@ -13,6 +13,8 @@ const USER_STORAGE_KEY = 'workflowengine.user';
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  /** Toàn bộ khu Quản trị Admin gated sau cờ này. */
+  isAdmin: boolean;
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -77,7 +79,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, isAuthenticated: !!user, isLoading, error, login, logout }),
+    () => ({
+      user,
+      isAuthenticated: !!user,
+      isAdmin: (user?.roles ?? []).includes('admin'),
+      isLoading,
+      error,
+      login,
+      logout,
+    }),
     [user, isLoading, error, login, logout],
   );
 
