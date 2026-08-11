@@ -10,6 +10,7 @@ export default defineConfig([
     '.next-dev/**',
     'out/**',
     'coverage/**',
+    '.agents/**',
     'node_modules*/**',
     'next-env.d.ts',
   ]),
