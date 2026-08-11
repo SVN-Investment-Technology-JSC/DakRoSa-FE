@@ -1,116 +1,107 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { Building2, ChevronDown, ChevronRight, GitBranch, Network, Plus, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { tenancyService } from '@/services/tenancy.service';
-import { ApiError } from '@/services/service-error';
-import { usersService } from '@/services/users.service';
+import { PositionsManagerDialog } from './positions-manager-dialog';
 import type { Organization, OrganizationChartUnit } from '@/types/tenancy';
-import type { UserRecord } from '@/types/user';
 
-const unitLabels: Record<string, string> = { company: 'Công ty', division: 'Khối/ban', department: 'Phòng ban', plant: 'Nhà máy', team: 'Tổ/nhóm' };
-const rankLabels: Record<number, string> = { 1: 'Quản lý', 2: 'Cấp phó', 3: 'Nhân viên' };
-const rankColors: Record<number, string> = { 1: 'border-l-rose-500 text-rose-700', 2: 'border-l-amber-500 text-amber-700', 3: 'border-l-sky-500 text-sky-700' };
+const types: Record<string, string> = { company: 'Công ty', division: 'Khối/ban', department: 'Phòng ban', plant: 'Nhà máy', team: 'Tổ/nhóm' };
+const ranks = [
+  { value: '1', name: 'Quản lý cấp cao' }, { value: '2', name: 'Lãnh đạo Công ty' },
+  { value: '3', name: 'Lãnh đạo Nhà máy' }, { value: '4', name: 'Quản lý Bộ phận/Phòng ban' },
+  { value: '5', name: 'Giám sát/Trung gian' }, { value: '6', name: 'Nhân viên/Chuyên viên' },
+];
+const rankStyles: Record<number, { label: string; card: string; tag: string }> = {
+  1: { label: 'Quản lý cấp cao', card: 'border-violet-500 bg-violet-50 text-violet-950 dark:bg-violet-950/30 dark:text-violet-50', tag: 'bg-violet-600 text-white' },
+  2: { label: 'Lãnh đạo Công ty', card: 'border-amber-500 bg-amber-50 text-amber-950 dark:bg-amber-950/30 dark:text-amber-50', tag: 'bg-amber-600 text-white' },
+  3: { label: 'Lãnh đạo Nhà máy', card: 'border-orange-500 bg-orange-50 text-orange-950 dark:bg-orange-950/30 dark:text-orange-50', tag: 'bg-orange-600 text-white' },
+  4: { label: 'Quản lý Phòng ban', card: 'border-sky-500 bg-sky-50 text-sky-950 dark:bg-sky-950/30 dark:text-sky-50', tag: 'bg-sky-600 text-white' },
+  5: { label: 'Giám sát/Trung gian', card: 'border-teal-500 bg-teal-50 text-teal-950 dark:bg-teal-950/30 dark:text-teal-50', tag: 'bg-teal-600 text-white' },
+  6: { label: 'Nhân viên/Chuyên viên', card: 'border-slate-300 bg-card text-foreground', tag: 'bg-slate-500 text-white' },
+};
+type UnitDraft = { id?: string; parentId?: string; code: string; name: string; type: string };
 
-function OrganizationNode({ unit, depth = 0 }: { unit: OrganizationChartUnit; depth?: number }) {
+function PersonnelNode({ person }: { person: OrganizationChartUnit['personnel'][number] }) {
+  const style = rankStyles[person.rank] ?? rankStyles[6];
+  const isLeadership = person.rank <= 5;
+  return <article className={`relative min-h-24 min-w-0 rounded-md border-2 p-3 shadow-sm ${style.card}`} aria-label={`${person.fullName}, ${style.label}`}>
+    <div className="flex min-w-0 items-start justify-between gap-2"><div className="min-w-0 flex-1"><p className="break-words font-bold leading-5">{person.fullName}</p><div className="mt-1 flex max-w-full flex-wrap gap-1">{person.isPrimary && person.rank <= 2 && (person.organizationTags ?? []).map((tag) => <span className={`inline-flex max-w-full break-words rounded px-1.5 py-0.5 text-[10px] font-semibold ${style.tag}`} key={`unit-${tag}`}>{tag}</span>)}{person.isPrimary && isLeadership && <span className={`inline-flex max-w-full break-words rounded px-1.5 py-0.5 text-[10px] font-semibold ${style.tag}`} key={`position-${person.positionName}`}>{person.positionName}</span>}{!person.isPrimary && person.primaryAssignment && <span className="inline-flex max-w-full break-words rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">Quản lý cấp cao</span>}</div></div><span className="max-w-28 shrink-0 break-words text-right text-[10px] font-medium opacity-75">{style.label}</span></div>
+    <p className="mt-1 font-mono text-xs opacity-80">{person.employeeCode}</p>
+  </article>;
+}
+
+function PersonnelSummaryNode({ count, onClick }: { count: number; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className="flex min-h-24 flex-col justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 p-3 text-left text-slate-700 shadow-sm transition-colors hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-slate-900/30 dark:text-slate-200"><p className="text-2xl font-bold">{count}</p><p className="text-sm font-semibold">nhân viên / chuyên viên</p><p className="mt-1 text-xs opacity-75">Nhấn để xem danh sách</p></button>;
+}
+
+function partitionPlantCharts(nodes: OrganizationChartUnit[]) {
+  const plants: OrganizationChartUnit[] = [];
+  const withoutPlants = (items: OrganizationChartUnit[]): OrganizationChartUnit[] => items.flatMap((item) => {
+    if (item.type === 'plant') { plants.push(item); return []; }
+    return [{ ...item, children: withoutPlants(item.children) }];
+  });
+  return { corporate: withoutPlants(nodes), plants };
+}
+
+function Node({ unit, onUnit, onPerson, onDelete, onSummary }: { unit: OrganizationChartUnit; onUnit: (draft: UnitDraft) => void; onPerson: (id: string) => void; onDelete: (id: string) => void; onSummary: (unitName: string, personnel: OrganizationChartUnit['personnel']) => void }) {
   const [open, setOpen] = useState(true);
-  const hasChildren = unit.children.length > 0;
-  return <div className={depth ? 'ml-3 border-l border-border pl-4 md:ml-7' : ''}>
-    <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-3 shadow-sm">
-      <button type="button" onClick={() => setOpen(!open)} className="grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted" aria-label={open ? 'Thu gọn đơn vị' : 'Mở rộng đơn vị'}>{hasChildren ? (open ? <ChevronDown size={17} /> : <ChevronRight size={17} />) : <span />}</button>
-      <Building2 size={18} className="text-primary" />
-      <div className="min-w-0 flex-1"><p className="font-semibold">{unit.name}</p><p className="text-xs text-muted-foreground">{unit.code} · {unitLabels[unit.type] ?? unit.type}</p></div>
-      <span className="hidden rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">{unit.personnel.length} nhân sự</span>
+  const importantPersonnel = unit.personnel.filter((person) => person.rank <= 5);
+  const staffCount = unit.personnel.length - importantPersonnel.length;
+  return <div className="ml-3 border-l border-border pl-4 first:ml-0 first:border-l-0 first:pl-0">
+    <div className="group flex items-center gap-2 rounded-xl border bg-card p-3 shadow-sm">
+      <button type="button" onClick={() => setOpen(!open)} className="grid h-6 w-6 place-items-center rounded hover:bg-muted">{unit.children.length ? open ? <ChevronDown size={17} /> : <ChevronRight size={17} /> : null}</button>
+      <Building2 size={18} className="text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">{unit.name}</p><p className="text-xs text-muted-foreground">{unit.code} · {types[unit.type] ?? unit.type}</p></div>
+      <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+        <Button size="icon" variant="ghost" title="Thêm đơn vị con" onClick={() => onUnit({ parentId: unit.id, code: '', name: '', type: 'department' })}><Plus size={16} /></Button>
+        <Button size="icon" variant="ghost" title="Thêm nhân sự" onClick={() => onPerson(unit.id)}><UserPlus size={16} /></Button>
+        <Button size="icon" variant="ghost" title="Chỉnh sửa" onClick={() => onUnit({ id: unit.id, parentId: unit.parentId ?? undefined, code: unit.code, name: unit.name, type: unit.type })}><Pencil size={16} /></Button>
+        <Button size="icon" variant="ghost" title="Xóa" onClick={() => onDelete(unit.id)}><Trash2 size={16} /></Button>
+      </div>
     </div>
-    {open && <div className="pb-3 pt-2">
-      {unit.personnel.length > 0 && <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {unit.personnel.map((person) => <div key={`${unit.id}-${person.id}-${person.positionName}`} className={`rounded-lg border border-border border-l-4 bg-background p-3 ${rankColors[person.rank] ?? rankColors[3]}`}>
-          <div className="flex items-start justify-between gap-2"><p className="font-semibold leading-5">{person.fullName}</p><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{person.isPrimary ? 'CHÍNH' : 'MA TRẬN'}</span></div>
-          <p className="mt-1 text-sm text-foreground/80">{person.positionName}</p>{person.username && <p className="mt-1 truncate text-xs text-muted-foreground">@{person.username}{person.email ? ` · ${person.email}` : ''}</p>}<div className="mt-2 flex justify-between text-xs"><span>{person.employeeCode}</span><span>{rankLabels[person.rank] ?? 'Nhân viên'}</span></div>
-        </div>)}
-      </div>}
-      {open && unit.children.map((child) => <OrganizationNode key={child.id} unit={child} depth={depth + 1} />)}
-    </div>}
+    {open && <div className="space-y-2 py-3">{unit.personnel.length > 0 && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{importantPersonnel.map((person) => <PersonnelNode key={`${unit.id}-${person.id}-${person.positionName}`} person={person} />)}{staffCount > 0 && <PersonnelSummaryNode count={staffCount} onClick={() => onSummary(unit.name, unit.personnel.filter((person) => person.rank >= 6))} />}</div>}{unit.children.map((child) => <Node key={child.id} unit={child} onUnit={onUnit} onPerson={onPerson} onDelete={onDelete} onSummary={onSummary} />)}</div>}
+  </div>;
+}
+
+function TreeItem({ unit, selectedId, onSelect }: { unit: OrganizationChartUnit; selectedId: string; onSelect: (unit: OrganizationChartUnit) => void }) {
+  const [open, setOpen] = useState(true); const hasChildren = unit.children.length > 0;
+  return <div className="pl-3"><div className={`group flex items-center gap-1 rounded-md py-1 pr-2 text-sm ${selectedId === unit.id ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}><button type="button" className="grid h-5 w-5 place-items-center" onClick={() => setOpen(!open)} aria-label="Mở hoặc thu gọn">{hasChildren ? open ? <ChevronDown size={15} /> : <ChevronRight size={15} /> : null}</button><button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left" onClick={() => onSelect(unit)}><Building2 size={15} className={unit.type === 'plant' ? 'text-orange-600' : 'text-primary'} /><span className="truncate">{unit.name}</span></button></div>{open && hasChildren && <div className="border-l border-border">{unit.children.map((child) => <TreeItem key={child.id} unit={child} selectedId={selectedId} onSelect={onSelect} />)}</div>}</div>;
+}
+
+function OrganizationDetail({ unit, onUnit, onPerson, onDelete, onSummary, onSelect }: { unit: OrganizationChartUnit; onUnit: (draft: UnitDraft) => void; onPerson: (id: string) => void; onDelete: (id: string) => void; onSummary: (unitName: string, personnel: OrganizationChartUnit['personnel']) => void; onSelect: (unit: OrganizationChartUnit) => void }) {
+  const importantPersonnel = unit.personnel.filter((person) => person.rank <= 5); const staff = unit.personnel.filter((person) => person.rank >= 6);
+  return <div className="min-w-0"><div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4"><div><p className="text-sm font-medium text-primary">Chi tiết đơn vị</p><h2 className="mt-1 text-xl font-bold">{unit.name}</h2><p className="mt-1 text-sm text-muted-foreground">{unit.code} · {types[unit.type] ?? unit.type} · {unit.personnel.length} nhân sự trực thuộc</p></div><div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => onUnit({ parentId: unit.id, code: '', name: '', type: 'department' })}><Plus size={16} />Thêm đơn vị</Button><Button size="sm" onClick={() => onPerson(unit.id)}><UserPlus size={16} />Thêm nhân sự</Button><Button size="icon" variant="ghost" title="Chỉnh sửa đơn vị" onClick={() => onUnit({ id: unit.id, parentId: unit.parentId ?? undefined, code: unit.code, name: unit.name, type: unit.type })}><Pencil size={16} /></Button><Button size="icon" variant="ghost" title="Xóa đơn vị" onClick={() => onDelete(unit.id)}><Trash2 size={16} /></Button></div></div>
+    {unit.children.length > 0 && <div className="mt-4"><p className="mb-2 text-sm font-semibold">Đơn vị trực thuộc</p><div className="flex flex-wrap gap-2">{unit.children.map((child) => <Button key={child.id} size="sm" variant="outline" onClick={() => onSelect(child)}><Building2 size={15} />{child.name}</Button>)}</div></div>}
+    <div className="mt-5"><p className="mb-3 text-sm font-semibold">Nhân sự</p>{unit.personnel.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{importantPersonnel.map((person) => <PersonnelNode key={`${unit.id}-${person.id}-${person.positionName}`} person={person} />)}{staff.length > 0 && <PersonnelSummaryNode count={staff.length} onClick={() => onSummary(unit.name, staff)} />}</div> : <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Chưa có nhân sự được bổ nhiệm vào đơn vị này.</p>}</div>
   </div>;
 }
 
 export function OrganizationPage() {
-  const [data, setData] = useState<Organization | null>(null);
-  const [tree, setTree] = useState<OrganizationChartUnit[]>([]);
-  const [view, setView] = useState<'chart' | 'manage'>('chart');
-  const [unitType, setUnitType] = useState('department');
-  const [parentId, setParentId] = useState('__none__');
-  const [positionUnitId, setPositionUnitId] = useState('__none__');
-  const [assignmentUnitId, setAssignmentUnitId] = useState('__none__');
-  const [assignmentPositionId, setAssignmentPositionId] = useState('__none__');
-  const [assignmentRank, setAssignmentRank] = useState('3');
-  const [systemUsers, setSystemUsers] = useState<UserRecord[]>([]);
-  const [systemUserId, setSystemUserId] = useState('__none__');
-
-  const load = async () => { const [organization, chart] = await Promise.all([tenancyService.getOrganization(), tenancyService.getOrganizationTree()]); setData(organization); setTree(chart.units); };
-  useEffect(() => {
-    let active = true;
-    Promise.all([tenancyService.getOrganization(), tenancyService.getOrganizationTree()])
-      .then(([organization, chart]) => { if (active) { setData(organization); setTree(chart.units); } })
-      .catch((error: unknown) => { if (active) toast.error(error instanceof Error ? error.message : 'Không thể tải cơ cấu tổ chức.'); });
-    return () => { active = false; };
-  }, []);
-  useEffect(() => {
-    let active = true;
-    usersService.getUsers().then((result) => { if (active) setSystemUsers(result.items.filter((item) => item.isActive)); }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
-  const activeUnits = data?.units.filter((unit) => unit.isActive) ?? [];
-  const activePositions = data?.positions.filter((position) => position.isActive) ?? [];
-  const unitName = (id: string | null) => data?.units.find((unit) => unit.id === id)?.name ?? '—';
-
-  const submitUnit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    try {
-      await tenancyService.createUnit({ code: String(form.get('code')), name: String(form.get('name')), type: unitType, parentId: parentId === '__none__' ? undefined : parentId });
-      formElement.reset(); setParentId('__none__'); await load(); toast.success('Đã thêm đơn vị tổ chức.');
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) { setParentId('__none__'); void load(); toast.error('Đơn vị cấp trên không còn tồn tại. Danh sách đã được tải lại; vui lòng chọn lại cấp trên.'); return; }
-      toast.error(error instanceof Error ? error.message : 'Không thể thêm đơn vị.');
-    }
-  };
-  const submitPosition = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    try {
-      await tenancyService.createPosition({ code: String(form.get('code')), name: String(form.get('name')), organizationUnitId: positionUnitId === '__none__' ? undefined : positionUnitId });
-      formElement.reset(); setPositionUnitId('__none__'); await load(); toast.success('Đã thêm chức danh.');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Không thể thêm chức danh.'); }
-  };
-  const submitPerson = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const code = String(form.get('employeeCode'));
-    try {
-      await tenancyService.createPersonnel({ employeeCode: code, fullName: String(form.get('fullName')), phone: String(form.get('phone') || '') || undefined, email: String(form.get('email') || '') || undefined, userId: systemUserId === '__none__' ? undefined : systemUserId });
-      if (assignmentUnitId !== '__none__' && assignmentPositionId !== '__none__') await tenancyService.createPersonnelAssignment(code, { organizationUnitId: assignmentUnitId, positionId: assignmentPositionId, isPrimary: true, rank: Number(assignmentRank) });
-      formElement.reset(); setSystemUserId('__none__'); setAssignmentUnitId('__none__'); setAssignmentPositionId('__none__'); await load(); toast.success('Đã thêm nhân sự vào sơ đồ.');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Không thể thêm nhân sự.'); }
-  };
-  const deactivate = async (kind: 'units' | 'positions', id: string) => { try { await tenancyService.deactivateOrganizationRecord(kind, id); await load(); toast.success('Đã ngừng kích hoạt bản ghi.'); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không thể cập nhật.'); } };
-
-  return <>
-    <PageHeading eyebrow="Quản trị doanh nghiệp" title="Cơ cấu tổ chức" description="Thiết kế cây đơn vị, chức danh và sơ đồ nhân sự đa vị trí (ma trận)." />
-    <div className="mt-5 flex gap-2 border-b"><Button variant={view === 'chart' ? 'default' : 'ghost'} onClick={() => setView('chart')}><GitBranch size={17} />Sơ đồ tổ chức</Button><Button variant={view === 'manage' ? 'default' : 'ghost'} onClick={() => setView('manage')}><Network size={17} />Quản lý cơ cấu</Button></div>
-    {view === 'chart' ? <Card className="mt-5"><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Sơ đồ tổ chức</CardTitle><p className="mt-1 text-sm text-muted-foreground">Thẻ viền màu theo cấp bậc; nhãn MA TRẬN hiển thị vị trí kiêm nhiệm.</p></div><span className="rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">{tree.length} đơn vị gốc</span></CardHeader><CardContent>{tree.length ? <div className="overflow-x-auto"><div className="min-w-[620px] space-y-2">{tree.map((unit) => <OrganizationNode key={unit.id} unit={unit} />)}</div></div> : <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">Chưa có đơn vị nào. Hãy tạo cơ cấu ở tab “Quản lý cơ cấu”.</div>}</CardContent></Card> : <div className="mt-5 grid gap-6 xl:grid-cols-2">
-      <Card><CardHeader><CardTitle>Đơn vị và phòng ban</CardTitle></CardHeader><CardContent><form className="grid gap-3 md:grid-cols-2" onSubmit={submitUnit}><Input name="code" placeholder="Mã đơn vị" required /><Input name="name" placeholder="Tên đơn vị/phòng ban" required /><Select value={unitType} onValueChange={setUnitType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="company">Công ty</SelectItem><SelectItem value="division">Khối/ban</SelectItem><SelectItem value="department">Phòng ban</SelectItem><SelectItem value="plant">Nhà máy</SelectItem><SelectItem value="team">Tổ/nhóm</SelectItem></SelectContent></Select><Select value={parentId} onValueChange={setParentId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Không có cấp trên</SelectItem>{activeUnits.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectContent></Select><Button type="submit" className="md:col-span-2"><Plus size={18} />Thêm đơn vị</Button></form><div className="mt-5 grid gap-2">{data?.units.map((unit) => <div key={unit.id} className="flex gap-3 rounded-lg border p-3"><Building2 size={18} className="mt-0.5 text-primary" /><div className="min-w-0 flex-1"><strong>{unit.name}</strong><p className="text-sm text-muted-foreground">{unit.code} · {unitLabels[unit.type] ?? unit.type}{unit.parentId ? ` · Thuộc ${unitName(unit.parentId)}` : ''}</p></div>{unit.isActive && <Button size="sm" variant="ghost" onClick={() => void deactivate('units', unit.id)}><Trash2 size={17} /></Button>}</div>)}</div></CardContent></Card>
-      <div className="space-y-6"><Card><CardHeader><CardTitle>Chức danh</CardTitle></CardHeader><CardContent><form className="grid gap-3 md:grid-cols-2" onSubmit={submitPosition}><Input name="code" placeholder="Mã chức danh" required /><Input name="name" placeholder="Tên chức danh" required /><Select value={positionUnitId} onValueChange={setPositionUnitId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Áp dụng toàn doanh nghiệp</SelectItem>{activeUnits.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectContent></Select><Button type="submit"><Plus size={18} />Thêm chức danh</Button></form><div className="mt-5 grid gap-2">{data?.positions.map((position) => <div key={position.id} className="flex gap-3 rounded-lg border p-3"><Network size={18} className="mt-0.5 text-primary" /><div className="min-w-0 flex-1"><strong>{position.name}</strong><p className="text-sm text-muted-foreground">{position.code} · {unitName(position.organizationUnitId)}</p></div>{position.isActive && <Button size="sm" variant="ghost" onClick={() => void deactivate('positions', position.id)}><Trash2 size={17} /></Button>}</div>)}</div></CardContent></Card>
-      <Card><CardHeader><CardTitle>Nhân sự và vị trí công tác</CardTitle></CardHeader><CardContent><form className="grid gap-3 md:grid-cols-2" onSubmit={submitPerson}><Select value={systemUserId} onValueChange={setSystemUserId}><SelectTrigger><SelectValue placeholder="Liên kết người dùng hệ thống (tuỳ chọn)" /></SelectTrigger><SelectContent><SelectItem value="__none__">Tạo hồ sơ nhân sự độc lập</SelectItem>{systemUsers.map((item) => <SelectItem key={item.id} value={item.id}>{item.displayName} · @{item.username}</SelectItem>)}</SelectContent></Select><Input name="employeeCode" placeholder="Mã nhân sự" required /><Input name="fullName" placeholder="Họ và tên" required /><Input name="phone" placeholder="Số điện thoại (tuỳ chọn)" /><Input name="email" type="email" placeholder="Email (tuỳ chọn)" /><Select value={assignmentUnitId} onValueChange={setAssignmentUnitId}><SelectTrigger><SelectValue placeholder="Đơn vị công tác" /></SelectTrigger><SelectContent><SelectItem value="__none__">Chưa gán đơn vị</SelectItem>{activeUnits.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectContent></Select><Select value={assignmentPositionId} onValueChange={setAssignmentPositionId}><SelectTrigger><SelectValue placeholder="Chức danh" /></SelectTrigger><SelectContent><SelectItem value="__none__">Chưa gán chức danh</SelectItem>{activePositions.map((position) => <SelectItem key={position.id} value={position.id}>{position.name}</SelectItem>)}</SelectContent></Select><Select value={assignmentRank} onValueChange={setAssignmentRank}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">Quản lý</SelectItem><SelectItem value="2">Cấp phó</SelectItem><SelectItem value="3">Nhân viên</SelectItem></SelectContent></Select><Button type="submit"><UserPlus size={18} />Thêm nhân sự</Button></form><p className="mt-3 flex gap-2 text-xs text-muted-foreground"><Users size={15} />Chọn người dùng đã khai báo để liên kết hồ sơ đăng nhập với nhân sự; thông tin @tài khoản và email sẽ hiện trên sơ đồ.</p></CardContent></Card></div>
-    </div>}
-  </>;
+  const [data, setData] = useState<Organization | null>(null); const [tree, setTree] = useState<OrganizationChartUnit[]>([]);
+  const [unit, setUnit] = useState<UnitDraft | null>(null); const [personUnitId, setPersonUnitId] = useState<string | null>(null); const [showPersonUnitPicker, setShowPersonUnitPicker] = useState(false); const [positionId, setPositionId] = useState('');
+  const [positionsManagerOpen, setPositionsManagerOpen] = useState(false);
+  const [staffPanel, setStaffPanel] = useState<{ unitName: string; personnel: OrganizationChartUnit['personnel'] } | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const load = async () => { const [org, chart] = await Promise.all([tenancyService.getOrganization(), tenancyService.getOrganizationTree()]); setData(org); setTree(chart.units); };
+  useEffect(() => { void load().catch((e: Error) => toast.error(e.message)); }, []);
+  const submitUnit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!unit) return; const f = new FormData(event.currentTarget); try { const input = { code: String(f.get('code')), name: String(f.get('name')), type: String(f.get('type')), parentId: unit.parentId }; if (unit.id) await tenancyService.updateOrganizationUnit(unit.id, input); else await tenancyService.createUnit(input); setUnit(null); await load(); toast.success('Đã lưu đơn vị tổ chức.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Không thể lưu đơn vị.'); } };
+  const submitPerson = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!personUnitId || personUnitId === '__choose__' || !positionId) return toast.error('Vui lòng chọn đơn vị và chức danh.'); const f = new FormData(event.currentTarget); try { await tenancyService.createAndAssignPersonnel({ employeeCode: String(f.get('employeeCode')), fullName: String(f.get('fullName')), phone: String(f.get('phone') || '') || undefined, email: String(f.get('email') || '') || undefined, organizationUnitId: personUnitId, positionId, rank: Number(f.get('rank')), createAccount: false }); setPersonUnitId(null); setShowPersonUnitPicker(false); setPositionId(''); await load(); toast.success('Đã tạo và bổ nhiệm nhân sự.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Không thể tạo nhân sự.'); } };
+  const remove = async (id: string) => { if (!confirm('Xóa đơn vị này? Chỉ có thể xóa đơn vị không có dữ liệu liên quan.')) return; try { await tenancyService.deleteOrganizationUnit(id); await load(); toast.success('Đã xóa đơn vị.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Không thể xóa đơn vị.'); } };
+  const { corporate, plants } = partitionPlantCharts(tree);
+  const allUnits = [...corporate, ...plants].flatMap(function collect(unit): OrganizationChartUnit[] { return [unit, ...unit.children.flatMap(collect)]; });
+  const selectedUnit = allUnits.find((unit) => unit.id === selectedUnitId) ?? allUnits[0] ?? null;
+  return <><PageHeading eyebrow="Quản trị doanh nghiệp" title="Sơ đồ tổ chức" description="Quản lý cơ cấu, chức danh, hồ sơ nhân sự và bổ nhiệm vào đơn vị." /><section className="mt-5 rounded-xl border bg-card p-4 shadow-sm"><div className="flex flex-wrap gap-2"><Button onClick={() => setUnit({ code: '', name: '', type: 'department' })}><Plus />Thêm đơn vị/Phòng ban</Button><Button variant="outline" onClick={() => setPositionsManagerOpen(true)}><Pencil />Quản lý chức danh</Button><Button variant="outline" onClick={() => { setShowPersonUnitPicker(true); setPersonUnitId('__choose__'); }}><UserPlus />Thêm & bổ nhiệm nhân sự</Button></div><p className="mt-3 text-xs text-muted-foreground">Tài khoản đăng nhập được quản lý tại <strong>/users</strong>; vai trò và quyền truy cập được quản lý tại <strong>/roles</strong>.</p></section>
+    <Card className="mt-5 overflow-hidden"><CardContent className="p-0">{selectedUnit ? <div className="grid min-h-[640px] lg:grid-cols-[290px_minmax(0,1fr)]"><aside className="border-b bg-muted/30 p-4 lg:border-r lg:border-b-0"><h2 className="mb-3 font-bold">Cây tổ chức</h2><div className="max-h-[70vh] overflow-y-auto pr-1"><p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Công ty mẹ</p>{corporate.map((unit) => <TreeItem key={unit.id} unit={unit} selectedId={selectedUnit.id} onSelect={(selected) => setSelectedUnitId(selected.id)} />)}{plants.length > 0 && <><p className="mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nhà máy</p>{plants.map((unit) => <TreeItem key={unit.id} unit={unit} selectedId={selectedUnit.id} onSelect={(selected) => setSelectedUnitId(selected.id)} />)}</>}</div></aside><main className="p-5"><OrganizationDetail unit={selectedUnit} onUnit={setUnit} onPerson={(id) => { setShowPersonUnitPicker(false); setPersonUnitId(id); }} onDelete={(id) => void remove(id)} onSummary={(unitName, personnel) => setStaffPanel({ unitName, personnel })} onSelect={(selected) => setSelectedUnitId(selected.id)} /></main></div> : <p className="p-10 text-center text-muted-foreground">Chưa có đơn vị tổ chức.</p>}</CardContent></Card>
+    <PositionsManagerDialog open={positionsManagerOpen} onOpenChange={setPositionsManagerOpen} positions={data?.positions ?? []} units={data?.units ?? []} onChanged={load} />
+    <Dialog open={!!staffPanel} onOpenChange={(open) => !open && setStaffPanel(null)}><DialogContent className="fixed inset-y-0 right-0 left-auto top-0 h-dvh w-full max-w-md translate-x-0 translate-y-0 rounded-none border-y-0 border-r-0 p-6 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-md"><DialogHeader><DialogTitle>Nhân viên · {staffPanel?.unitName}</DialogTitle></DialogHeader><div className="overflow-y-auto pr-1"><p className="mb-4 text-sm text-muted-foreground">{staffPanel?.personnel.length ?? 0} nhân viên / chuyên viên</p><div className="space-y-2">{staffPanel?.personnel.map((person) => <div className="rounded-lg border p-3" key={`${person.id}-${person.positionName}`}><p className="font-semibold">{person.fullName}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{person.employeeCode}</p><p className="mt-1 text-sm text-muted-foreground">{person.positionName}</p></div>)}</div></div></DialogContent></Dialog>
+    <Dialog open={!!unit} onOpenChange={(v) => !v && setUnit(null)}><DialogContent><DialogHeader><DialogTitle>{unit?.id ? 'Chỉnh sửa đơn vị' : 'Tạo Đơn vị/Phòng ban'}</DialogTitle></DialogHeader><form className="grid gap-3" onSubmit={submitUnit}><Label>Mã đơn vị<Input name="code" required defaultValue={unit?.code} /></Label><Label>Tên đơn vị<Input name="name" required defaultValue={unit?.name} /></Label><Label>Loại đơn vị<Select name="type" defaultValue={unit?.type}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(types).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></Label><Button type="submit">Lưu đơn vị</Button></form></DialogContent></Dialog>
+    <Dialog open={!!personUnitId} onOpenChange={(v) => { if (!v) { setPersonUnitId(null); setShowPersonUnitPicker(false); } }}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Tạo và Bổ nhiệm Nhân sự mới</DialogTitle></DialogHeader><form className="grid gap-3" onSubmit={submitPerson}>{showPersonUnitPicker && <Label>Đơn vị<Select onValueChange={setPersonUnitId}><SelectTrigger><SelectValue placeholder="Chọn đơn vị" /></SelectTrigger><SelectContent>{data?.units.filter((u) => u.isActive).map((u) => <SelectItem value={u.id} key={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></Label>}<Label>Họ và tên<Input name="fullName" required /></Label><Label>Mã nhân viên<Input name="employeeCode" required /></Label><Label>Chức danh<Select value={positionId} onValueChange={setPositionId}><SelectTrigger><SelectValue placeholder="Chọn chức danh" /></SelectTrigger><SelectContent>{data?.positions.filter((position) => position.isActive).map((position) => <SelectItem key={position.id} value={position.id}>{position.name}</SelectItem>)}</SelectContent></Select></Label><Input name="phone" placeholder="Số điện thoại (tùy chọn)" /><Input name="email" type="email" placeholder="Email" /><Label>Cấp bậc<Select name="rank" defaultValue="6"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ranks.map((rank) => <SelectItem key={rank.value} value={rank.value}>{rank.name}</SelectItem>)}</SelectContent></Select></Label><p className="text-xs text-muted-foreground">Sau khi bổ nhiệm, tạo tài khoản tại <strong>/users</strong> và gán quyền tại <strong>/roles</strong>.</p><Button type="submit">Tạo và bổ nhiệm</Button></form></DialogContent></Dialog></>;
 }
