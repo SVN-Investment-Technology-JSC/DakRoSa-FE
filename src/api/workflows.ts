@@ -54,8 +54,23 @@ export interface ApiWorkflow {
   steps?: ApiWorkflowStep[];
 }
 
-export function getWorkflows(kind?: WorkflowKind): Promise<ApiWorkflow[]> {
-  return apiClient.get('/workflows', { params: kind ? { kind } : {} }).then((r) => r.data);
+/**
+ * `submittableByMe` chỉ lấy những quy trình người đang đăng nhập giữ chữ **S** —
+ * dùng cho ô chọn quy trình khi tạo đơn. Backend cũng chặn lại ở `POST /tasks`,
+ * nên đây thuần tuý là để không mời người dùng chọn thứ họ sẽ bị từ chối.
+ */
+export function getWorkflows(
+  kind?: WorkflowKind,
+  submittableByMe?: boolean,
+): Promise<ApiWorkflow[]> {
+  return apiClient
+    .get('/workflows', {
+      params: {
+        ...(kind ? { kind } : {}),
+        ...(submittableByMe ? { submittableByMe: 'true' } : {}),
+      },
+    })
+    .then((r) => r.data);
 }
 
 export function getWorkflow(id: string): Promise<ApiWorkflow> {

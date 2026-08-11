@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Workflow } from './workflow.entity';
 import { WorkflowStep } from './workflow-step.entity';
+import { RaciAssignment } from '../raci/raci-assignment.entity';
+import { OrgUnitsService } from '../org-units/org-units.service';
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { CreateWorkflowStepDto } from './dto/create-workflow-step.dto';
 import { UpdateWorkflowStepDto } from './dto/update-workflow-step.dto';
@@ -15,13 +22,78 @@ export class WorkflowsService {
     private readonly workflowsRepository: Repository<Workflow>,
     @InjectRepository(WorkflowStep)
     private readonly stepsRepository: Repository<WorkflowStep>,
+    @InjectRepository(RaciAssignment)
+    private readonly raciRepository: Repository<RaciAssignment>,
+    private readonly orgUnitsService: OrgUnitsService,
   ) {}
 
-  findAll(kind?: WorkflowKind): Promise<Workflow[]> {
-    return this.workflowsRepository.find({
+  async findAll(kind?: WorkflowKind, submittableByUserId?: string): Promise<Workflow[]> {
+    const workflows = await this.workflowsRepository.find({
       where: kind ? { kind } : {},
       order: { name: 'ASC' },
     });
+    if (!submittableByUserId) return workflows;
+    return this.filterSubmittableBy(workflows, submittableByUserId);
+  }
+
+  /**
+   * Chỉ giữ những quy trình mà `userId` thực sự mở đơn được — tức là có ít nhất
+   * một bước gắn chữ **S** phân giải ra đúng người này.
+   *
+   * Lọc ở server chứ không ở giao diện: danh sách này quyết định `POST /tasks`
+   * gọi được với luồng nào, nên để client tự đoán thì một người không giữ S vẫn
+   * mở được đơn bằng cách gọi thẳng API.
+   *
+   * Phân giải qua `OrgUnitsService.resolveAssignees` (chứ không so `orgUnitId`
+   * cho nhanh) để dùng chung đúng một luật với lúc tạo đơn: S gán cho một Ban là
+   * cả Ban kể cả các Tổ bên dưới, và ghế trưởng trống thì đẩy lên cấp trên.
+   */
+  private async filterSubmittableBy(
+    workflows: Workflow[],
+    userId: string,
+  ): Promise<Workflow[]> {
+    if (workflows.length === 0) return workflows;
+
+    const sTags = await this.raciRepository
+      .createQueryBuilder('a')
+      .innerJoinAndSelect('a.step', 's')
+      .where('a.roleLetter = :letter', { letter: 'S' })
+      .andWhere('s.workflowId IN (:...ids)', { ids: workflows.map((w) => w.id) })
+      .getMany();
+
+    // Nhiều bước thường trỏ về cùng một đích; phân giải mỗi đích đúng một lần.
+    const resolvedTargets = new Map<string, boolean>();
+    const submittable = new Set<string>();
+
+    for (const tag of sTags) {
+      const key = `${tag.orgUnitId}|${tag.positionId ?? ''}|${tag.userId ?? ''}`;
+      let holdsS = resolvedTargets.get(key);
+      if (holdsS === undefined) {
+        const receivers = await this.orgUnitsService.resolveAssignees({
+          orgUnitId: tag.orgUnitId,
+          positionId: tag.positionId,
+          userId: tag.userId,
+          roleLetter: 'S',
+        });
+        holdsS = receivers.some((r) => r.userId === userId);
+        resolvedTargets.set(key, holdsS);
+      }
+      if (holdsS) submittable.add(tag.step.workflowId);
+    }
+
+    return workflows.filter((w) => submittable.has(w.id));
+  }
+
+  /** 403 khi `userId` không giữ chữ S ở bất kỳ bước nào của luồng. */
+  async assertSubmittableBy(workflowId: string, userId: string): Promise<void> {
+    const workflow = await this.workflowsRepository.findOne({ where: { id: workflowId } });
+    if (!workflow) throw new NotFoundException(`Workflow ${workflowId} not found`);
+    const allowed = await this.filterSubmittableBy([workflow], userId);
+    if (allowed.length === 0) {
+      throw new ForbiddenException(
+        `Bạn không giữ vai trò Đề xuất (S) ở quy trình "${workflow.name}" nên không thể tạo đơn cho quy trình này.`,
+      );
+    }
   }
 
   async findOne(id: string): Promise<Workflow> {

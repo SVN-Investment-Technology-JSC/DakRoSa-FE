@@ -22,7 +22,7 @@ import {
   useTasks,
 } from '../hooks/useTasks';
 import { useOrgUnitsByLevel } from '../hooks/useOrgUnits';
-import { useWorkflows } from '../hooks/useWorkflows';
+import { useSubmittableWorkflows } from '../hooks/useWorkflows';
 
 interface WorkspaceViewProps {
   onMenuToggle?: () => void;
@@ -43,6 +43,35 @@ const STEP_STATUS_STYLES: Record<string, string> = {
   Rejected: 'bg-rose-50 border-rose-300 text-rose-700',
 };
 
+/** Thứ tự đọc của sáu chữ cái — trùng với thứ tự trong Ma trận RSACIE. */
+const LETTER_ORDER: RoleLetter[] = ['R', 'S', 'A', 'C', 'I', 'E'];
+
+/**
+ * "C: Nguyễn Văn Tuấn" thay vì "C: Khối Kỹ thuật".
+ *
+ * Dựng từ `assignees` — tức là những người ĐÃ được phân giải lúc tạo đơn, đã
+ * tính cả escalation lẫn uỷ quyền — chứ không đọc `roleAssignedSummary` sẵn có,
+ * vì chuỗi đó được đông cứng lúc tạo và các đơn tạo trước thay đổi này vẫn đang
+ * ghi tên đơn vị. Chỉ rơi về nó khi một bước không có người nhận nào.
+ */
+function describeStepOwners(step: ApiTaskStepInstance): string | null {
+  const assignees = step.assignees ?? [];
+  if (assignees.length === 0) return step.roleAssignedSummary ?? null;
+
+  const byLetter = new Map<RoleLetter, string[]>();
+  for (const a of assignees) {
+    const name = a.user?.fullName ?? 'Không rõ';
+    const label = a.isEscalated ? `${name} (xử lý thay)` : name;
+    const list = byLetter.get(a.roleLetter) ?? [];
+    if (!list.includes(label)) list.push(label);
+    byLetter.set(a.roleLetter, list);
+  }
+
+  return LETTER_ORDER.filter((l) => byLetter.has(l))
+    .map((l) => `${l}: ${byLetter.get(l)!.join(', ')}`)
+    .join('; ');
+}
+
 // --- Create Task Modal ---
 
 interface CreateTaskModalProps {
@@ -51,8 +80,12 @@ interface CreateTaskModalProps {
 }
 
 const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ onClose, onCreated }) => {
-  const { data: processWorkflows } = useWorkflows('process');
-  const { data: directWorkflows } = useWorkflows('maintenance_direct');
+  // Chỉ quy trình người dùng giữ chữ S. `maintenance_linked` không có mặt ở đây
+  // vì luồng đó do hệ thống tự sinh sau khi quy trình cha được duyệt.
+  const { data: processWorkflows, isLoading: loadingProcess } =
+    useSubmittableWorkflows('process');
+  const { data: directWorkflows, isLoading: loadingDirect } =
+    useSubmittableWorkflows('maintenance_direct');
   const { data: orgUnits } = useOrgUnitsByLevel(1);
   const createTaskMutation = useCreateTask();
 
@@ -64,6 +97,8 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ onClose, onCreated })
   const [dueDate, setDueDate] = useState('');
 
   const workflowOptions = [...(processWorkflows ?? []), ...(directWorkflows ?? [])];
+  const isLoadingWorkflows = loadingProcess || loadingDirect;
+  const hasNoWorkflows = !isLoadingWorkflows && workflowOptions.length === 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +140,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ onClose, onCreated })
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800"
             >
               <option value="" disabled>
-                -- Chọn quy trình --
+                {isLoadingWorkflows ? 'Đang tải...' : '-- Chọn quy trình --'}
               </option>
               {workflowOptions.map((wf) => (
                 <option key={wf.id} value={wf.id}>
@@ -113,6 +148,13 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ onClose, onCreated })
                 </option>
               ))}
             </select>
+            {hasNoWorkflows && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">
+                Bạn chưa được gán vai trò <b>Đề xuất (S)</b> ở quy trình nào, nên chưa mở được đơn.
+                Nhờ người thiết kế quy trình gán chữ S cho bạn (hoặc cho đơn vị của bạn) ở{' '}
+                <b>Ma trận RSACIE</b>.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -685,9 +727,9 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ onMenuToggle }) =>
                           {step.status === 'Pending' && <span className="material-symbols-outlined text-base">schedule</span>}
                         </div>
                         <h5 className="text-xs font-bold line-clamp-2">{step.stepName}</h5>
-                        {step.roleAssignedSummary && (
+                        {describeStepOwners(step) && (
                           <div className="text-[10px] font-semibold pt-2 border-t border-current/10">
-                            👤 {step.roleAssignedSummary}
+                            👤 {describeStepOwners(step)}
                           </div>
                         )}
                         <div className="w-full bg-white/60 rounded-full h-1.5 overflow-hidden">

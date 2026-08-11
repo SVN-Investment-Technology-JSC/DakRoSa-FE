@@ -218,6 +218,12 @@ export class TasksService {
     // BRD 2 Rule 4: an invalid workflow (Node E without a following Node C)
     // must never be started, even though it can be saved while being designed.
     await this.workflowsService.assertExecutable(dto.workflowId);
+    // Chỉ người giữ chữ S mới mở được đơn thủ công. Hai nguồn còn lại
+    // (`auto_from_parent`, `work_order`) do hệ thống tự sinh, không có người
+    // đề xuất nào để kiểm — chặn chúng ở đây sẽ làm gãy luồng tự động.
+    if ((meta?.origin ?? 'manual') === 'manual') {
+      await this.workflowsService.assertSubmittableBy(dto.workflowId, initiatorUserId);
+    }
     const stepsSorted = [...(workflow.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
 
     const task = await this.tasksRepository.save(
@@ -282,20 +288,57 @@ export class TasksService {
       roleLetter: RoleLetter;
     }) => this.orgUnitsService.resolveAssignees(assignment);
 
+    const userNameCache = new Map<string, string>();
+    const userName = async (userId: string): Promise<string> => {
+      let name = userNameCache.get(userId);
+      if (!name) {
+        const user = await this.usersService.findById(userId);
+        name = user?.fullName ?? 'Không rõ';
+        userNameCache.set(userId, name);
+      }
+      return name;
+    };
+
     for (let i = 0; i < stepsSorted.length; i++) {
       const templateStep = stepsSorted[i];
       const assignments = templateStep.raciAssignments ?? [];
 
-      const resolvedUnits = await Promise.all(assignments.map((a) => resolveOrgUnit(a.orgUnitId)));
-      const roleAssignedSummary = assignments
-        .map((a, idx) => {
-          // Show what the tag actually targets: a person, a position within the
-          // unit, or the unit itself.
-          if (a.user) return `${a.roleLetter}: ${a.user.fullName}`;
-          if (a.position) return `${a.roleLetter}: ${a.position.name} — ${resolvedUnits[idx].title}`;
-          return `${a.roleLetter}: ${resolvedUnits[idx].title}`;
-        })
-        .join('; ');
+      // Ai thực sự nhận việc — phân giải MỘT lần rồi dùng cho cả câu tóm tắt lẫn
+      // các dòng `task_step_assignees`, để hai chỗ không thể nói khác nhau.
+      const resolvedPerAssignment = await Promise.all(
+        assignments.map((assignment) =>
+          // A Work Order's Node E belongs to the person who raised it, so the
+          // RACI tag is overridden rather than resolved.
+          meta?.nodeEOwnerUserId && assignment.roleLetter === 'E'
+            ? Promise.resolve([{ userId: meta.nodeEOwnerUserId, isEscalated: false }])
+            : resolveAssignees(assignment),
+        ),
+      );
+
+      // Tên người, không phải tên đơn vị: "C: Nguyễn Văn Tuấn" đọc xong là biết
+      // phải hỏi ai, còn "C: Khối Kỹ thuật" thì vẫn phải tra tiếp trưởng khối là
+      // ai. Đơn vị được ghi trong ngoặc để không mất ngữ cảnh gán.
+      const roleAssignedSummary = (
+        await Promise.all(
+          assignments.map(async (a, idx) => {
+            const receivers = resolvedPerAssignment[idx];
+            if (receivers.length === 0) {
+              const unit = await resolveOrgUnit(a.orgUnitId);
+              return `${a.roleLetter}: ${unit.title} (chưa có người nhận)`;
+            }
+            const names = await Promise.all(
+              receivers.map(async (r) =>
+                r.isEscalated ? `${await userName(r.userId)} (xử lý thay)` : userName(r.userId),
+              ),
+            );
+            // Tag gán cho cá nhân thì tên đã là tất cả; gán cho đơn vị thì kèm
+            // tên đơn vị để biết chữ cái này đến từ ô nào của ma trận.
+            if (a.userId) return `${a.roleLetter}: ${names.join(', ')}`;
+            const unit = await resolveOrgUnit(a.orgUnitId);
+            return `${a.roleLetter}: ${names.join(', ')} — ${unit.title}`;
+          }),
+        )
+      ).join('; ');
 
       // BRD 3 US 3.1 — đông cứng cấu hình nguồn công việc của Node E ngay lúc
       // tạo đơn. Một bước chỉ có tối đa một tag E hữu ích ở đây; nếu có nhiều,
@@ -318,14 +361,8 @@ export class TasksService {
 
       const assigneeRows: TaskStepAssignee[] = [];
       const seen = new Set<string>();
-      for (const assignment of assignments) {
-        // A Work Order's Node E belongs to the person who raised it, so the
-        // RACI tag is overridden rather than resolved.
-        const resolved =
-          meta?.nodeEOwnerUserId && assignment.roleLetter === 'E'
-            ? [{ userId: meta.nodeEOwnerUserId, isEscalated: false }]
-            : await resolveAssignees(assignment);
-        for (const person of resolved) {
+      for (const [idx, assignment] of assignments.entries()) {
+        for (const person of resolvedPerAssignment[idx]) {
           // (step, user, roleLetter) is the composite PK — dedupe so two tags
           // resolving to the same person for the same letter don't collide.
           const key = `${person.userId}:${assignment.roleLetter}`;

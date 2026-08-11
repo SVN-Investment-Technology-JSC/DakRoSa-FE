@@ -22,7 +22,12 @@ describe('WorkflowsService.validate (Node E → Node C adjacency)', () => {
 
   beforeEach(() => {
     workflowsRepository = { findOne: jest.fn() };
-    service = new WorkflowsService(workflowsRepository as any, {} as any);
+    service = new WorkflowsService(
+      workflowsRepository as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
   });
 
   it('accepts a workflow with no Node E at all', async () => {

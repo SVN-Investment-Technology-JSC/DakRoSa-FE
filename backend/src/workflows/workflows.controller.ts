@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { WorkflowsService } from './workflows.service';
 import { CreateWorkflowDto } from './dto/create-workflow.dto';
 import { CreateWorkflowStepDto } from './dto/create-workflow-step.dto';
@@ -13,9 +26,21 @@ import type { WorkflowKind } from './workflow-kind';
 export class WorkflowsController {
   constructor(private readonly workflowsService: WorkflowsService) {}
 
+  /**
+   * `submittableByMe=true` chỉ trả về những quy trình người gọi giữ chữ S —
+   * dùng cho ô chọn quy trình ở màn hình tạo đơn.
+   */
   @Get()
-  findAll(@Query('kind') kind?: WorkflowKind) {
-    return this.workflowsService.findAll(kind);
+  findAll(
+    @Req() req: Request,
+    @Query('kind') kind?: WorkflowKind,
+    @Query('submittableByMe') submittableByMe?: string,
+  ) {
+    const jwtUser = req.user as JwtPayload;
+    return this.workflowsService.findAll(
+      kind,
+      submittableByMe === 'true' ? jwtUser.sub : undefined,
+    );
   }
 
   // Declared before the bare ':id' route so it is not swallowed by it.

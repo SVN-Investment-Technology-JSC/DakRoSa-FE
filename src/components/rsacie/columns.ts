@@ -14,13 +14,17 @@ import { ApiRaciAssignment, RoleLetter } from '../../api/workflows';
  *
  * There is deliberately NO "(Cả đơn vị)" pseudo-column. Assigning a role to a
  * department — at any level — means the department HEAD owns it, and the head
- * then redistributes downward. So a unit-level tag is rendered on that unit's
- * head column (see `inheritedByLeaf`), which shows the routing rule instead of
- * hiding it behind an extra column.
+ * then redistributes downward. So a unit-level tag lives on that unit's head
+ * column, which shows the routing rule instead of hiding it behind an extra
+ * column.
+ *
+ * A cell therefore targets exactly one of two things: an ORG UNIT (routing to
+ * its head) or one PERSON. There is no position-level target — a single tag on
+ * "Nhân viên của Tổ X" used to render once per holder, so one configured cell
+ * read as several unrelated ones.
  */
 export interface CellTarget {
   orgUnitId: string;
-  positionId?: string;
   userId?: string;
 }
 
@@ -97,10 +101,7 @@ export function cellAssignments(
 ): ApiRaciAssignment[] {
   const t = column.target;
   return assignments.filter(
-    (a) =>
-      a.orgUnitId === t.orgUnitId &&
-      (a.positionId ?? undefined) === t.positionId &&
-      (a.userId ?? undefined) === t.userId,
+    (a) => a.orgUnitId === t.orgUnitId && (a.userId ?? undefined) === t.userId,
   );
 }
 
@@ -245,60 +246,12 @@ export function buildColumnTree({ roots, expandedKeys, membersByUnit }: BuildOpt
 }
 
 /**
- * A tag that was configured at a group level (a whole unit, or a whole
- * position) but is rendered on one concrete column, because that is who
- * actually receives it at run time.
- */
-export interface InheritedTag {
-  assignment: ApiRaciAssignment;
-  /** What the tag was configured on. Only positions can be inherited now. */
-  from: 'position';
-  fromTitle: string;
-}
-
-/**
- * Position-level tags, keyed by the person column that displays them.
- *
- * The matrix no longer has a "chức vụ" column to hold these — every person gets
- * their own column instead. A position tag routes to EVERY holder at run time,
- * so it is shown on every holder's column, marked read-only. Data created
- * before this change (or through the API) therefore stays visible.
- */
-export function inheritedByLeaf(
-  nodes: ColumnNode[],
-  assignments: ApiRaciAssignment[],
-): Map<string, InheritedTag[]> {
-  const result = new Map<string, InheritedTag[]>();
-  const positionTags = assignments.filter((a) => a.positionId && !a.userId);
-  if (positionTags.length === 0) return result;
-
-  const walk = (node: ColumnNode) => {
-    if (node.kind === 'user' && node.positionId) {
-      for (const assignment of positionTags) {
-        if (
-          assignment.orgUnitId === node.target.orgUnitId &&
-          assignment.positionId === node.positionId
-        ) {
-          const list = result.get(node.key) ?? [];
-          list.push({ assignment, from: 'position', fromTitle: node.title });
-          result.set(node.key, list);
-        }
-      }
-    }
-    node.children.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return result;
-}
-
-/**
  * Giữ lại đúng những cột có liên quan tới một tập assignment.
  *
  * Dùng khi sổ dọc một quy trình: bảng ma trận rộng theo cả sơ đồ tổ chức, nên
  * đọc một quy trình cụ thể thường phải cuộn ngang qua hàng loạt cột trống. Một
- * cột được giữ khi nó có tag trực tiếp, có tag theo chức vụ, hoặc (khi đang thu
- * gọn) có tag nằm sâu bên trong. Nhóm cha được giữ nếu còn con nào được giữ.
+ * cột được giữ khi nó có tag trực tiếp, hoặc (khi đang thu gọn) có tag nằm sâu
+ * bên trong. Nhóm cha được giữ nếu còn con nào được giữ.
  *
  * Trả về `null` khi không còn cột nào — người gọi phải rơi về cây đầy đủ, vì
  * một quy trình chưa cấu hình gì mà mất sạch cột thì không thể cấu hình được.
@@ -308,8 +261,6 @@ export function pruneToRelevant(
   assignments: ApiRaciAssignment[],
   unitById: Map<string, ApiOrgUnitTreeNode>,
 ): ColumnNode[] | null {
-  const inherited = inheritedByLeaf(nodes, assignments);
-
   const keep = (node: ColumnNode): ColumnNode | null => {
     if (node.children.length) {
       const children = node.children.map(keep).filter((c): c is ColumnNode => c !== null);
@@ -317,7 +268,6 @@ export function pruneToRelevant(
     }
     const relevant =
       cellAssignments(node, assignments).length > 0 ||
-      (inherited.get(node.key)?.length ?? 0) > 0 ||
       deeperAssignments(node, assignments, unitById).length > 0;
     return relevant ? node : null;
   };

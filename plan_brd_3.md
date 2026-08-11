@@ -252,3 +252,76 @@ Toàn bộ 4 Epic của BRD 3 **đã triển khai xong** và kiểm chứng end-
 `tsc --noEmit` sạch cả hai phía; `npm test` 77/77 pass (thêm 3 test mới cho BRD 3 trong `maintenance.service.spec.ts`); migration + seed chạy trên Postgres thật. Kiểm qua `curl`: lưu/gỡ JSON và chặn trùng tên + thời gian ≤ 0; chặn đặt sai cấp trong cây; chặn Nhà máy ở gốc; chặn lồng quá 5 cấp `part`; xoá nhánh cascade; 3 tùy chọn Role E gồm cả trạng thái mờ và chặn phía server; **chuỗi đầy đủ**: quét bảo trì → phiếu → Tạo Lệnh công việc → JSON 4 nhiệm vụ của Buồng xoắn đi vào `equipmentTaskTemplate` → `GET .../suggested` trả đúng 4 việc → phân rã `E(x)` tổng trọng số 100; và nhánh biên `device_default` + thiết bị không có JSON → trả `unavailableReason` thay vì mảng rỗng câm.
 
 **Chưa làm**: chuyển nhánh (đổi `parentId` của một node đã tạo) — cùng lý do với reparenting của Sơ đồ Tổ chức, là thao tác riêng chứ không phải một field của form sửa. Tạo/xoá đã đủ để dựng cây.
+
+---
+
+## Siết đích gán vai trò + hiện tên người (phản hồi sau BRD 3)
+
+Bốn sửa đổi, không cần migration — chỉ đổi luật validate và dọn dữ liệu qua seed.
+
+### 1. Bỏ cấp "Chức vụ" khỏi ma trận
+
+Đích gán chỉ còn `orgUnitId` (đơn vị → trưởng đơn vị) hoặc `orgUnitId + userId` (cá nhân). `RaciService.replaceCellAssignments` từ chối `positionId`; frontend xoá `inheritedByLeaf`/`InheritedTag` trong `rsacie/columns.ts` và bỏ `positionId` khỏi `CellTarget`/`RaciCellTarget`.
+
+Cột `raci_assignments.position_id` **vẫn giữ trong schema** — bỏ cột là một migration phá huỷ để đổi lấy đúng một cột nullable không ai ghi vào nữa. Seed xoá các dòng còn sót.
+
+### 2. Đơn vị chưa có trưởng không phải đích gán hợp lệ
+
+`replaceCellAssignments` chặn tag mức đơn vị khi `orgUnit.headUserId` rỗng. Cố ý **không** mượn `resolveUnitHead` ở đây: escalation là lưới an toàn lúc CHẠY (trưởng nghỉ giữa chừng), dùng nó lúc THIẾT KẾ sẽ biến một ô cấu hình sai thành một ô im lặng chạy sai người. `resolveAssignees` giữ nguyên.
+
+Vẫn cho lưu `tags: []` để gỡ được tag cũ — nếu không, ô sai sẽ mắc kẹt vĩnh viễn.
+
+### 3. Lọc quy trình theo chữ S ở màn hình tạo đơn
+
+`GET /workflows?submittableByMe=true` → `WorkflowsService.filterSubmittableBy`, phân giải mỗi tag S qua `OrgUnitsService.resolveAssignees` (dùng chung luật với lúc tạo đơn: S gán cho một Ban là cả Ban kể cả các Tổ bên dưới). `TasksService.create` gọi `assertSubmittableBy` → **403**, chỉ với `origin: 'manual'`; `auto_from_parent` và `work_order` không có người đề xuất nào để kiểm.
+
+`WorkflowsModule` nhận thêm `OrgUnitsModule` + repository của `RaciAssignment`. Không import `RaciModule` vì module đó đã phụ thuộc ngược lại `WorkflowsModule`.
+
+### 4. `roleAssignedSummary` ghi tên người
+
+`TasksService.create` phân giải người nhận **một lần**, dùng chung cho câu tóm tắt lẫn `task_step_assignees` — trước đây câu tóm tắt dựng từ tên đơn vị, tính riêng, nên hai chỗ có thể nói khác nhau. Định dạng: `C: Nguyễn Văn Tuấn — Khối Kỹ thuật`, người được escalate kèm `(xử lý thay)`.
+
+Chuỗi này đông cứng lúc tạo đơn nên đơn cũ vẫn giữ nội dung cũ. Frontend vì thế dựng lại từ `step.assignees` (`describeStepOwners` trong `WorkspaceView.tsx`), chỉ rơi về `roleAssignedSummary` khi một bước không có người nhận nào — đơn tạo trước thay đổi này cũng hiện đúng tên.
+
+### Đã kiểm chứng
+
+`tsc --noEmit` sạch cả hai phía; `npm test` 77/77 pass; seed chạy trên Postgres thật (gỡ 1 tag chức vụ + tag trỏ vào Tổ QA). Kiểm qua `curl` trên API thật: gán cho đơn vị chưa có trưởng → 400 kèm lý do, gán cho cá nhân trong chính đơn vị đó → OK, gán theo chức vụ → 400, gán cho đơn vị có trưởng → OK (hoàn tác sau khi thử); `submittableByMe` trả đúng theo từng người (`lead.dev`/`officer` → WF-CAPEX, `ky.thuat1` → HP, `auditor`/`truong.co.dien`/`admin` → rỗng); `auditor` tạo đơn WF-CAPEX → 403, `lead.dev` tạo → thành công và 4 bước đều ghi tên người.
+
+### Chưa làm
+
+Chưa có màn hình bổ nhiệm trưởng đơn vị (`org_units.head_user_id` sửa được qua `PATCH /org-units/:id` nhưng `OrgChartView` chưa có ô chọn) — thông báo lỗi hiện chỉ dẫn người dùng sang Sơ đồ Tổ chức, mà ở đó vẫn phải gọi API tay. Đây là cùng một khoảng trống "chưa có picker chọn người" đã ghi từ bước 7.
+
+---
+
+## Quản lý nhân sự trên Sơ đồ Tổ chức
+
+Đóng nốt khoảng trống "chưa có picker chọn người" đã ghi từ bước 7 và nhắc lại ở mục trên.
+
+### Endpoint mới
+
+- `GET /users?search=` — danh bạ, trả shape gọn `UserDirectoryEntry` (`roles` là eager nên trả nguyên entity sẽ kéo theo cả cây quyền mỗi lần gõ tìm kiếm).
+- `POST /users` — tạo tài khoản, mặc định quyền `approver`. Người được đưa vào sơ đồ tổ chức là để xử lý việc; thiếu `task.approve` thì họ nhận việc rồi đứng im, một cái bẫy chỉ lộ ra lúc đơn đã chạy tới bước của họ.
+
+Cả hai đòi `org.manage` chứ không chỉ đăng nhập: đây là toàn bộ danh bạ, và nơi tiêu thụ duy nhất là màn hình quản trị tổ chức (vốn đã chỉ admin thấy). `UsersModule` nhận thêm `RbacModule` + `forwardRef(() => AuthModule)` — AuthModule đã import UsersModule cho JWT strategy nên chiều ngược lại phải forwardRef.
+
+**Tìm kiếm lọc trong bộ nhớ, không dùng `ILIKE`.** Postgres không phân biệt HOA/thường nhưng **có** phân biệt dấu, nên "tuan" không ra "Tuấn" — mà gõ không dấu mới là cách người dùng thật sự tìm. Bỏ dấu hai phía trong SQL cần extension `unaccent` + một migration, chỉ để phục vụ ô tìm kiếm của một danh bạ nội bộ cỡ vài trăm người.
+
+### Giao diện
+
+`UnitPeopleModal.tsx` (mới) — bổ nhiệm/đổi/gỡ trưởng, thêm/gỡ nhân sự, tạo tài khoản mới rồi thêm luôn vào đơn vị đang mở. `OrgChartView` liệt kê nhân sự trên từng thẻ (nạp một lượt bằng `useManyOrgUnitMembers` cho cả cây, thay vì nạp lười theo thẻ thành chuỗi request nối đuôi), thêm nút 👥, và biến dòng "chưa có trưởng" thành nút mở thẳng bảng nhân sự.
+
+Trưởng đơn vị và danh sách nhân sự tách riêng có chủ ý vì hệ thống đối xử khác nhau: `head_user_id` là người nhận vai trò khi ma trận gán cho cả đơn vị, còn `org_unit_members` là danh sách để phân rã việc xuống và để chữ S lan tới cả đơn vị.
+
+### Lỗi thật phát hiện khi kiểm chứng
+
+`PATCH /org-units/:id` với `headUserId: null` **không gỡ được trưởng**. `OrgUnitsService.update` nạp entity kèm quan hệ `head` (`findOne` có `relations: ['type','head']`), rồi `Object.assign(unit, dto)` + `save()`. TypeORM thấy `unit.head` vẫn trỏ vào User cũ nên tính lại khoá ngoại từ object đó, ghi đè `null` trở về id cũ — im lặng, không lỗi. Đúng cùng cái bẫy đã ghi ở `WorkflowRequestsService.triage`.
+
+Sửa sang `repository.update(id, patch)` với patch dựng tay, phân biệt `null` (gỡ) với `undefined` (không đụng tới trường đó).
+
+### Đã kiểm chứng
+
+`tsc --noEmit` sạch cả hai phía; `npm test` 77/77 pass. Kiểm qua `curl` trên API thật: tạo tài khoản (`Trịnh Thu Hà` → avatar `TH`, quyền `approver`), chặn trùng email, chặn mật khẩu < 6 ký tự; tìm không dấu `tuan` → `Nguyễn Văn Tuấn`, `ha` → 5 người kể cả `Đặng Hải Yến`/`Đỗ Minh Khang`; **chuỗi đầy đủ**: thêm người vào Tổ QA → bổ nhiệm trưởng → gán R cho cả Tổ QA thành công (trước đó bị chặn đúng theo luật mới) → gỡ trưởng → xác nhận `headUserId` về `null` → đổi `title` không đụng tới `head`. Dữ liệu thử đã dọn, DB trở về đúng trạng thái seed.
+
+### Chưa làm
+
+Đổi tên / vô hiệu hoá đơn vị và **chuyển nhánh** vẫn chưa có nút trên giao diện (`PATCH /org-units/:id` đã đủ cho hai việc đầu). Xoá hoặc vô hiệu hoá tài khoản người dùng chưa có endpoint — chỉ tạo được.

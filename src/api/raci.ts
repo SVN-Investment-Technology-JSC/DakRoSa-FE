@@ -48,10 +48,13 @@ export function getETaskSourceOptions(workflowId: string): Promise<{
   return apiClient.get(`/workflows/${workflowId}/e-task-source-options`).then((r) => r.data);
 }
 
-/** Identifies one matrix cell: an org unit, optionally narrowed to a position or a person. */
+/**
+ * Identifies one matrix cell. Đúng hai kiểu đích: cả ĐƠN VỊ (`orgUnitId`, việc
+ * rơi vào trưởng đơn vị) hoặc một CÁ NHÂN (thêm `userId`). Không còn cấp chức
+ * vụ — backend từ chối `positionId`.
+ */
 export interface RaciCellTarget {
   orgUnitId: string;
-  positionId?: string;
   userId?: string;
 }
 

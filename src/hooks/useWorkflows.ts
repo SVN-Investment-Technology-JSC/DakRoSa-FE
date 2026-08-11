@@ -16,6 +16,14 @@ export function useWorkflows(kind?: WorkflowKind) {
   return useQuery({ queryKey: [...WORKFLOWS_KEY, kind ?? 'all'], queryFn: () => getWorkflows(kind) });
 }
 
+/** Chỉ những quy trình người đang đăng nhập giữ chữ S — xem `getWorkflows`. */
+export function useSubmittableWorkflows(kind?: WorkflowKind) {
+  return useQuery({
+    queryKey: [...WORKFLOWS_KEY, kind ?? 'all', 'submittable'],
+    queryFn: () => getWorkflows(kind, true),
+  });
+}
+
 export function useWorkflow(id: string | undefined) {
   return useQuery({
     queryKey: workflowKey(id ?? ''),

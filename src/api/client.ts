@@ -1,6 +1,25 @@
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const BACKEND_PORT = '3001';
+
+/**
+ * Địa chỉ backend, suy ra từ chính host đang mở trang.
+ *
+ * Mở bằng `localhost` thì gọi `localhost:3001`; mở bằng IP LAN thì gọi đúng IP
+ * đó. Để cứng `localhost` là lỗi kinh điển khi chia sẻ trong mạng nội bộ: đồng
+ * nghiệp mở `http://192.168.x.x:5173` nhưng trình duyệt của họ lại gọi về máy
+ * của chính họ, và cả ứng dụng hỏng ngay ở màn hình đăng nhập.
+ *
+ * `VITE_API_URL` vẫn ghi đè được, cho trường hợp backend nằm ở máy khác hoặc
+ * sau một reverse proxy.
+ */
+function inferApiBaseUrl(): string {
+  if (typeof window === 'undefined') return `http://localhost:${BACKEND_PORT}`;
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:${BACKEND_PORT}`;
+}
+
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? inferApiBaseUrl();
 
 const ACCESS_TOKEN_KEY = 'workflowengine.accessToken';
 const REFRESH_TOKEN_KEY = 'workflowengine.refreshToken';

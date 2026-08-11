@@ -7,6 +7,9 @@ import {
   useOrgUnitTree,
   useOrgUnitTypes,
 } from '../hooks/useOrgUnits';
+import { useManyOrgUnitMembers } from '../hooks/usePositions';
+import { ApiOrgUnitMember } from '../api/positions';
+import { UnitPeopleModal } from './orgchart/UnitPeopleModal';
 
 interface OrgChartViewProps {
   onMenuToggle?: () => void;
@@ -26,6 +29,10 @@ const TYPE_COLORS = ['#2563eb', '#007bb9', '#7c3aed', '#059669', '#d97706'];
 function typeColorFor(typeId: string, typeIds: string[]): string {
   const idx = typeIds.indexOf(typeId);
   return TYPE_COLORS[idx % TYPE_COLORS.length] ?? '#2563eb';
+}
+
+function flattenUnits(nodes: ApiOrgUnitTreeNode[]): ApiOrgUnitTreeNode[] {
+  return nodes.flatMap((n) => [n, ...flattenUnits(n.children ?? [])]);
 }
 
 function countNodes(nodes: ApiOrgUnitTreeNode[]): number {
@@ -60,8 +67,21 @@ export const OrgChartView: React.FC<OrgChartViewProps> = ({ onMenuToggle }) => {
   );
   const [newNodeTitle, setNewNodeTitle] = useState('');
   const [newNodeTypeId, setNewNodeTypeId] = useState('');
+  const [peopleUnitId, setPeopleUnitId] = useState<string | null>(null);
 
   const typeIds = (types ?? []).map((t) => t.id);
+
+  // Danh sách nhân sự của MỌI đơn vị, nạp cùng lúc: sơ đồ vẽ cả cây một lần nên
+  // nạp lười theo từng thẻ sẽ thành một chuỗi request nối đuôi nhau.
+  const allUnits = flattenUnits(treeRoots ?? []);
+  const memberQueries = useManyOrgUnitMembers(allUnits.map((u) => u.id));
+  const membersByUnit = new Map<string, ApiOrgUnitMember[]>();
+  allUnits.forEach((u, i) => {
+    const data = memberQueries[i]?.data;
+    if (data) membersByUnit.set(u.id, data);
+  });
+
+  const peopleUnit = allUnits.find((u) => u.id === peopleUnitId) ?? null;
 
   const openAddNodeModal = (parentId: string | null) => {
     setAddChildModalParentId(parentId);
@@ -121,7 +141,14 @@ export const OrgChartView: React.FC<OrgChartViewProps> = ({ onMenuToggle }) => {
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-slate-200 rounded-lg p-0.5 shadow-sm">
                 <button
                   className="p-1 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-md"
-                  title="Add Child Node"
+                  title="Nhân sự & trưởng đơn vị"
+                  onClick={() => setPeopleUnitId(node.id)}
+                >
+                  <span className="material-symbols-outlined text-[16px]">group</span>
+                </button>
+                <button
+                  className="p-1 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-md"
+                  title="Thêm đơn vị con"
                   onClick={() => openAddNodeModal(node.id)}
                 >
                   <span className="material-symbols-outlined text-[16px]">add_circle</span>
@@ -147,10 +174,58 @@ export const OrgChartView: React.FC<OrgChartViewProps> = ({ onMenuToggle }) => {
                 </span>
               </div>
             ) : (
-              <div className="text-slate-400 text-xs italic mt-1 pt-2.5 border-t border-slate-100">
-                No Head Assigned
-              </div>
+              <button
+                type="button"
+                onClick={() => setPeopleUnitId(node.id)}
+                className="mt-1 flex w-full items-center gap-1.5 border-t border-slate-100 pt-2.5 text-left text-xs font-semibold text-amber-600 hover:text-amber-700"
+              >
+                <span className="material-symbols-outlined text-[15px]">person_add</span>
+                Chưa có trưởng đơn vị — bổ nhiệm
+              </button>
             )}
+
+            {/* Nhân sự của đơn vị. Trưởng đã hiện ở trên nên không lặp lại. */}
+            {(() => {
+              const staff = (membersByUnit.get(node.id) ?? []).filter(
+                (m) => m.userId !== node.headUserId,
+              );
+              return (
+                <div className="border-t border-slate-100 pt-2.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                      Nhân sự ({staff.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPeopleUnitId(node.id)}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800"
+                    >
+                      + Thêm người
+                    </button>
+                  </div>
+                  {staff.length === 0 ? (
+                    <p className="text-[10px] italic text-slate-400">Chưa có nhân sự</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {staff.map((m) => (
+                        <li key={m.id} className="flex items-center gap-2">
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[8px] font-bold text-slate-600">
+                            {m.user?.avatarInitials ??
+                              (m.user?.fullName ?? '?').slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="truncate text-[11px] font-semibold text-slate-700">
+                            {m.user?.fullName ?? m.userId}
+                          </span>
+                          <span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">
+                            {m.position?.name}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -276,6 +351,10 @@ export const OrgChartView: React.FC<OrgChartViewProps> = ({ onMenuToggle }) => {
           </div>
         </section>
       </main>
+
+      {peopleUnit && (
+        <UnitPeopleModal unit={peopleUnit} onClose={() => setPeopleUnitId(null)} />
+      )}
 
       {/* Add Node Modal (root or child) */}
       {addChildModalParentId !== undefined && (

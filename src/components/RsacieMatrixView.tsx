@@ -24,13 +24,11 @@ import {
   ColumnNode,
   buildColumnTree,
   cellAssignments,
-  inheritedByLeaf,
   deeperAssignments,
   headerRows,
   indexUnits,
   leafColumns,
   pruneToRelevant,
-  type InheritedTag,
   sortLetters,
   treeDepth,
 } from './rsacie/columns';
@@ -336,12 +334,6 @@ interface StepCellProps {
   tags: ApiRaciAssignment[];
   /** Tags configured deeper inside a collapsed column — makes this cell an aggregate. */
   deeper: ApiRaciAssignment[];
-  /**
-   * Tags configured on an expanded group (a whole unit, or a whole position)
-   * that this column is the run-time recipient of. Read-only here: they belong
-   * to the group, so they are edited by collapsing back to it.
-   */
-  inherited: InheritedTag[];
   hasCElsewhere: boolean;
 }
 
@@ -351,7 +343,6 @@ const StepCell: React.FC<StepCellProps> = ({
   column,
   tags,
   deeper,
-  inherited,
   hasCElsewhere,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -397,21 +388,15 @@ const StepCell: React.FC<StepCellProps> = ({
   const isAggregate = deeper.length > 0;
   const current = tags[0];
   const multiOwn = tags.length > 1;
-  const inheritedTag = inherited[0];
+  // Gán cho một đơn vị nghĩa là gán cho TRƯỞNG đơn vị đó, nên đơn vị chưa có
+  // trưởng thì không có ai để nhận. Backend cũng chặn, đây chỉ là để người dùng
+  // biết trước thay vì bấm xong mới ăn lỗi. Cột cá nhân không bị ảnh hưởng.
+  const headlessUnit = column.kind === 'unit' && !column.headUserId;
 
   return (
     <td className="border-r border-slate-100 px-2 py-2 align-middle">
       <div ref={anchorRef}>
-        {!current && !isAggregate && !multiOwn && inheritedTag ? (
-          // Assigned to the whole unit/position: this column is simply who
-          // receives it. Shown, not editable, so the tag keeps one home.
-          <LetterButton
-            letters={joinLetters(inherited.map((i) => i.assignment))}
-            tone="border-dashed border-indigo-300 bg-indigo-50/70 text-indigo-700"
-            onClick={() => setIsOpen(true)}
-            title={`Gán ở mức chức vụ “${inheritedTag.fromTitle}” → người này nhận việc. Thu gọn cột đó để sửa.`}
-          />
-        ) : isAggregate || multiOwn ? (
+        {isAggregate || multiOwn ? (
           <LetterButton
             letters={joinLetters([...tags, ...deeper])}
             tone="bg-slate-50 text-slate-500 border-slate-200 border-dashed"
@@ -450,8 +435,16 @@ const StepCell: React.FC<StepCellProps> = ({
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            title="Gán vai trò"
-            className="flex min-h-[34px] w-full items-center justify-center rounded-lg border border-transparent text-sm font-medium text-slate-300 transition-colors hover:border-slate-200 hover:bg-slate-50 hover:text-blue-500"
+            title={
+              headlessUnit
+                ? `“${column.title}” chưa có trưởng đơn vị — không gán được cho cả đơn vị`
+                : 'Gán vai trò'
+            }
+            className={`flex min-h-[34px] w-full items-center justify-center rounded-lg border border-transparent text-sm font-medium transition-colors ${
+              headlessUnit
+                ? 'cursor-help text-slate-200 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-500'
+                : 'text-slate-300 hover:border-slate-200 hover:bg-slate-50 hover:text-blue-500'
+            }`}
           >
             -
           </button>
@@ -484,11 +477,11 @@ const StepCell: React.FC<StepCellProps> = ({
               </button>
             </div>
 
-            {inherited.length > 0 && (
-              <p className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-[10px] leading-snug text-indigo-700">
-                <b>{joinLetters(inherited.map((i) => i.assignment))}</b> đang được gán cho cả chức vụ
-                “{inherited[0].fromTitle}”, nên người này là một trong những người nhận. Muốn sửa thì
-                thu gọn cột “{inherited[0].fromTitle}”.
+            {headlessUnit && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] leading-snug text-amber-800">
+                “{column.title}” <b>chưa có trưởng đơn vị</b>, mà gán cho đơn vị nghĩa là giao cho
+                trưởng đơn vị. Hãy bổ nhiệm trưởng ở <b>Sơ đồ Tổ chức</b>, hoặc sổ cột này ra và gán
+                thẳng cho một cá nhân.
               </p>
             )}
 
@@ -511,6 +504,9 @@ const StepCell: React.FC<StepCellProps> = ({
               />
             ) : !pendingC ? (
               <>
+                {/* Đơn vị chưa có trưởng: không mời gán mới, nhưng vẫn phải gỡ
+                    được tag cũ — nếu không, ô sai sẽ mắc kẹt vĩnh viễn. */}
+                {!headlessUnit && (
                 <div className="grid grid-cols-3 gap-1.5">
                   {(letterOptions ?? []).map((l) => {
                     const blocked = l === 'C' && hasCElsewhere;
@@ -537,6 +533,7 @@ const StepCell: React.FC<StepCellProps> = ({
                     );
                   })}
                 </div>
+                )}
 
                 {tags.length > 0 && (
                   <button
@@ -797,14 +794,6 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.id, assignmentSignature]);
 
-  // Computed once per render, not once per cell — this walks the whole column
-  // tree, so calling it inside the column loop would be quadratic.
-  const allInherited = useMemo(() => inheritedByLeaf(tree, allAssignments), [tree, allAssignments]);
-  const inheritedByStep = useMemo(
-    () => new Map(steps.map((s) => [s.id, inheritedByLeaf(tree, s.raciAssignments ?? [])])),
-    [tree, steps],
-  );
-
   const handleAddStep = async () => {
     if (!newStepName.trim()) return;
     const nextOrder = (steps[steps.length - 1]?.stepOrder ?? 0) + 1;
@@ -870,7 +859,6 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
           const tags = [
             ...cellAssignments(col, allAssignments),
             ...deeperAssignments(col, allAssignments, unitById),
-            ...(allInherited.get(col.key) ?? []).map((i) => i.assignment),
           ];
           return (
             <td key={col.key} className="border-r border-slate-100 px-2 py-2.5 align-middle">
@@ -972,7 +960,6 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
               {columns.map((col) => {
                 const tags = cellAssignments(col, stepTags);
                 const deeper = deeperAssignments(col, stepTags, unitById);
-                const stepInherited = inheritedByStep.get(step.id)?.get(col.key) ?? [];
                 return (
                   <StepCell
                     key={col.key}
@@ -981,7 +968,6 @@ const WorkflowRows: React.FC<WorkflowRowsProps> = ({
                     column={col}
                     tags={tags}
                     deeper={deeper}
-                    inherited={stepInherited}
                     // Any C outside this exact cell blocks a new one — the
                     // "max 1 C per step" rule is global, so a C sitting in a
                     // deeper column counts too.
@@ -1277,14 +1263,9 @@ export const RsacieMatrixView: React.FC<RsacieMatrixViewProps> = ({ onMenuToggle
       return next;
     });
 
-  const expandAll = () => {
-    const keys = new Set<string>();
-    for (const id of unitIds) {
-      keys.add(id);
-      for (const m of membersByUnit.get(id) ?? []) keys.add(`${id}::pos::${m.positionId}`);
-    }
-    setExpandedKeys(keys);
-  };
+  // Chỉ đơn vị mới sổ ra được: `buildColumnTree` dùng thẳng id đơn vị làm
+  // `toggleKey`, cột người là lá nên không có gì để mở.
+  const expandAll = () => setExpandedKeys(new Set(unitIds));
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-slate-50">

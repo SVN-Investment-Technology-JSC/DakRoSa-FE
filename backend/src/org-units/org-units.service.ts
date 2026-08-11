@@ -393,10 +393,27 @@ export class OrgUnitsService {
     return this.findOne(saved.id);
   }
 
+  /**
+   * Ghi thẳng bằng `update()` chứ không nạp entity rồi `save()`.
+   *
+   * `findOne` nạp kèm quan hệ `head`. Nếu gán `headUserId = null` lên entity đã
+   * nạp rồi `save()`, TypeORM thấy `unit.head` vẫn là object cũ nên tính lại
+   * khoá ngoại từ đó và ghi đè `null` trở về id cũ — gỡ trưởng đơn vị im lặng
+   * không có tác dụng. Đúng lỗi đã gặp ở `WorkflowRequestsService.triage`.
+   */
   async update(id: string, dto: UpdateOrgUnitDto): Promise<OrgUnit> {
-    const unit = await this.findOne(id);
-    Object.assign(unit, dto);
-    await this.orgUnitsRepository.save(unit);
+    await this.findOne(id); // 404 nếu không tồn tại
+    const patch: Partial<OrgUnit> = {};
+    if (dto.title !== undefined) patch.title = dto.title;
+    if (dto.isActive !== undefined) patch.isActive = dto.isActive;
+    if (dto.sortOrder !== undefined) patch.sortOrder = dto.sortOrder;
+    // `null` là một giá trị hợp lệ ở đây (gỡ trưởng), nên phải phân biệt với
+    // `undefined` (không đụng tới trường này).
+    if (dto.headUserId !== undefined) patch.headUserId = dto.headUserId;
+
+    if (Object.keys(patch).length > 0) {
+      await this.orgUnitsRepository.update(id, patch);
+    }
     return this.findOne(id);
   }
 

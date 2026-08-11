@@ -119,16 +119,30 @@ export class RaciService {
   ): Promise<RaciAssignment[]> {
     const step = await this.workflowsService.findStepOrThrow(workflowId, stepId);
 
-    if (dto.positionId && dto.userId) {
+    // Chỉ còn hai kiểu đích: ĐƠN VỊ (mặc định là trưởng đơn vị) hoặc CÁ NHÂN.
+    // Cấp "chức vụ" đã bỏ: một tag chức vụ trỏ tới nhiều người cùng lúc nên khi
+    // sổ cột ra nó hiện lặp ở từng người, đọc như thể có nhiều tag khác nhau.
+    if (dto.positionId) {
       throw new BadRequestException(
-        'Một ô chỉ được gán cho Chức vụ hoặc Cá nhân, không thể cả hai.',
+        'Chỉ gán được cho Đơn vị (mặc định là trưởng đơn vị) hoặc cho Cá nhân — không gán theo Chức vụ.',
       );
     }
 
     // Any level is a valid anchor — BRD's TH1 (assign while a department column
-    // is collapsed) and TH2 (drill down to a position/person first) are the same
+    // is collapsed) and TH2 (drill down to a person first) are the same
     // operation: tag whatever the current column represents.
-    await this.orgUnitsService.findOne(dto.orgUnitId);
+    const orgUnit = await this.orgUnitsService.findOne(dto.orgUnitId);
+
+    // Gán cho đơn vị nghĩa là gán cho TRƯỞNG đơn vị đó, nên đơn vị chưa có
+    // trưởng thì không có đích để gán. Cố tình không mượn escalation ở đây:
+    // đẩy lên cấp trên là lưới an toàn lúc CHẠY (trưởng nghỉ giữa chừng), dùng
+    // nó lúc THIẾT KẾ sẽ biến một ô cấu hình sai thành một ô im lặng chạy sai
+    // người. Gán thẳng cho cá nhân trong đơn vị đó thì vẫn được.
+    if (!dto.userId && dto.tags.length > 0 && !orgUnit.headUserId) {
+      throw new BadRequestException(
+        `"${orgUnit.title}" chưa có trưởng đơn vị nên không thể gán vai trò cho cả đơn vị. Hãy bổ nhiệm trưởng ở Sơ đồ Tổ chức, hoặc gán trực tiếp cho một cá nhân trong đơn vị.`,
+      );
+    }
 
     const allowedLetters = new Set(await this.getRoleLetterOptions(workflowId));
 

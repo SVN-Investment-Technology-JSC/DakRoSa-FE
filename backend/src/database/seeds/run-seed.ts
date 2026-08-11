@@ -304,10 +304,13 @@ async function seedRoleLetterAllowlist(): Promise<void> {
   console.log('  role letter allowlist seeded');
 }
 
+/**
+ * Đích của một tag chỉ có hai kiểu: cả ĐƠN VỊ (`orgUnitKey`, mặc định rơi vào
+ * trưởng đơn vị) hoặc một CÁ NHÂN (`userEmail`). Cấp "chức vụ" đã bỏ — xem
+ * `RaciService.replaceCellAssignments`.
+ */
 interface RaciAssignmentSeed {
   orgUnitKey: string;
-  /** Narrow to holders of this position within the unit (BRD position-based routing). */
-  positionCode?: string;
   /** Narrow to one exact person. */
   userEmail?: string;
   roleLetter: RoleLetter;
@@ -359,9 +362,12 @@ const WORKFLOWS: WorkflowSeed[] = [
         stepCode: '2',
         stepName: 'Thẩm định Kỹ thuật & Dự toán',
         assignments: [
-          // Position-targeted: resolves to BOTH "Nhân viên" of Tổ Backend, so this
-          // step exercises the AND-logic (all R holders must approve) out of the box.
-          { orgUnitKey: 'to-backend', positionCode: 'nhan-vien', roleLetter: 'R' },
+          // Hai tag CÁ NHÂN, không phải một tag chức vụ: Tổ Backend chưa có
+          // trưởng nên không gán được cho cả tổ, và gán theo chức vụ đã bỏ. Hai
+          // người này vẫn giữ nguyên phép thử AND-logic (mọi người giữ R phải
+          // duyệt xong bước mới đi tiếp).
+          { orgUnitKey: 'to-backend', userEmail: 'staff.dev@company.vn', roleLetter: 'R' },
+          { orgUnitKey: 'to-backend', userEmail: 'officer@company.vn', roleLetter: 'R' },
           { orgUnitKey: 'khoi-ky-thuat', roleLetter: 'C', fixedRollbackStepKey: 'step-1' },
         ],
       },
@@ -371,7 +377,11 @@ const WORKFLOWS: WorkflowSeed[] = [
         stepCode: '3',
         stepName: 'Kiểm tra Tuân thủ & Khung Pháp lý',
         assignments: [
-          { orgUnitKey: 'to-qa', roleLetter: 'R' },
+          // Trước đây gán cho Tổ QA — tổ này cố tình không có trưởng, nên theo
+          // luật mới thì không phải đích gán hợp lệ. Đưa lên Ban Phát triển
+          // Phần mềm (Trần Văn Hoàng) để mọi ô trong ma trận demo đều tạo lại
+          // được bằng chính giao diện.
+          { orgUnitKey: 'ban-phat-trien', roleLetter: 'R' },
           { orgUnitKey: 'khoi-ky-thuat', roleLetter: 'I' },
         ],
       },
@@ -422,12 +432,41 @@ const WORKFLOWS: WorkflowSeed[] = [
 
 async function seedWorkflows(
   orgUnitsByKey: Map<string, OrgUnit>,
-  positionMap: Map<string, Position>,
   userMap: Map<string, User>,
 ): Promise<void> {
   const workflowRepo = AppDataSource.getRepository(Workflow);
   const stepRepo = AppDataSource.getRepository(WorkflowStep);
   const raciRepo = AppDataSource.getRepository(RaciAssignment);
+
+  // DB dựng từ trước có thể còn tag gán theo chức vụ. Chúng không sửa được bằng
+  // giao diện nữa (ma trận chỉ còn cột đơn vị và cột cá nhân), nên để lại là để
+  // lại một ô cấu hình vô hình vẫn định tuyến việc lúc chạy.
+  const legacyPositionTags = await raciRepo
+    .createQueryBuilder()
+    .delete()
+    .where('position_id IS NOT NULL')
+    .execute();
+  if (legacyPositionTags.affected) {
+    console.log(`  gỡ ${legacyPositionTags.affected} tag RACI gán theo chức vụ (đã bỏ cấp này)`);
+  }
+
+  // Tag gán cho cả một đơn vị chưa có trưởng cũng không còn hợp lệ: gán cho đơn
+  // vị nghĩa là gán cho trưởng, mà ghế đang trống. Trước đây chúng vẫn chạy nhờ
+  // escalation nên không ai thấy — giờ giao diện chặn tạo mới, để lại sẽ thành ô
+  // không thể dựng lại nếu lỡ xoá.
+  const headlessUnitTags = await raciRepo
+    .createQueryBuilder()
+    .delete()
+    .where('user_id IS NULL')
+    .andWhere(
+      'org_unit_id IN (SELECT id FROM org_units WHERE head_user_id IS NULL)',
+    )
+    .execute();
+  if (headlessUnitTags.affected) {
+    console.log(
+      `  gỡ ${headlessUnitTags.affected} tag RACI trỏ vào đơn vị chưa có trưởng (không còn là đích gán hợp lệ)`,
+    );
+  }
 
   // Sub-flow links are resolved in a second pass: a step can point at a workflow
   // that appears later in this list (WF-CAPEX step 4 → WF-EXEC).
@@ -471,7 +510,6 @@ async function seedWorkflows(
       const step = stepsByKey.get(stepSeed.key)!;
       for (const assignment of stepSeed.assignments) {
         const orgUnit = orgUnitsByKey.get(assignment.orgUnitKey)!;
-        const position = assignment.positionCode ? positionMap.get(assignment.positionCode)! : null;
         const targetUser = assignment.userEmail ? userMap.get(assignment.userEmail)! : null;
         const fixedRollbackStep = assignment.fixedRollbackStepKey
           ? stepsByKey.get(assignment.fixedRollbackStepKey)!
@@ -481,7 +519,7 @@ async function seedWorkflows(
           where: {
             stepId: step.id,
             orgUnitId: orgUnit.id,
-            positionId: position?.id ?? IsNull(),
+            positionId: IsNull(),
             userId: targetUser?.id ?? IsNull(),
             roleLetter: assignment.roleLetter,
           },
@@ -491,7 +529,7 @@ async function seedWorkflows(
             raciRepo.create({
               stepId: step.id,
               orgUnitId: orgUnit.id,
-              positionId: position?.id ?? null,
+              positionId: null,
               userId: targetUser?.id ?? null,
               roleLetter: assignment.roleLetter,
               fixedRollbackStepId: fixedRollbackStep?.id ?? null,
@@ -828,7 +866,7 @@ async function main() {
   console.log('Seeding role letter allowlist...');
   await seedRoleLetterAllowlist();
   console.log('Seeding CapEx workflow + RACI assignments...');
-  await seedWorkflows(orgUnitsByKey, positionMap, userMap);
+  await seedWorkflows(orgUnitsByKey, userMap);
   console.log('Seeding maintenance parts + schedules...');
   await seedMaintenance(orgUnitsByKey);
   console.log(`\nDone. All demo users share the password: ${SEED_PASSWORD}`);
