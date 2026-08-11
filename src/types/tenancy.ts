@@ -20,7 +20,7 @@ export interface Organization {
   positions: Position[];
 }
 
-export interface OrganizationChartPerson { id: string; employeeCode: string; fullName: string; positionName: string; isPrimary: boolean; rank: number; }
+export interface OrganizationChartPerson { id: string; employeeCode: string; fullName: string; positionName: string; isPrimary: boolean; rank: number; username: string | null; email: string | null; }
 export interface OrganizationChartUnit extends OrganizationUnit { personnel: OrganizationChartPerson[]; children: OrganizationChartUnit[]; }
 export interface OrganizationChart { units: OrganizationChartUnit[]; positions: Position[]; }
 
@@ -61,7 +61,7 @@ export interface CreatePositionInput {
   organizationUnitId?: string;
 }
 
-export interface CreatePersonnelInput { employeeCode: string; fullName: string; phone?: string; email?: string; status?: string; }
+export interface CreatePersonnelInput { employeeCode: string; fullName: string; phone?: string; email?: string; status?: string; userId?: string; }
 export interface CreatePersonnelAssignmentInput { organizationUnitId: string; positionId: string; isPrimary?: boolean; rank?: number; startDate?: string; }
 
 export interface CreateSiteInput {
