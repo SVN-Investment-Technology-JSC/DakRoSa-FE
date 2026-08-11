@@ -5,7 +5,7 @@ import { Building2, ChevronDown, ChevronRight, Pencil, Plus, Trash2, UserPlus } 
 import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,25 +50,6 @@ function partitionPlantCharts(nodes: OrganizationChartUnit[]) {
     return [{ ...item, children: withoutPlants(item.children) }];
   });
   return { corporate: withoutPlants(nodes), plants };
-}
-
-function Node({ unit, onUnit, onPerson, onDelete, onSummary }: { unit: OrganizationChartUnit; onUnit: (draft: UnitDraft) => void; onPerson: (id: string) => void; onDelete: (id: string) => void; onSummary: (unitName: string, personnel: OrganizationChartUnit['personnel']) => void }) {
-  const [open, setOpen] = useState(true);
-  const importantPersonnel = unit.personnel.filter((person) => person.rank <= 5);
-  const staffCount = unit.personnel.length - importantPersonnel.length;
-  return <div className="ml-3 border-l border-border pl-4 first:ml-0 first:border-l-0 first:pl-0">
-    <div className="group flex items-center gap-2 rounded-xl border bg-card p-3 shadow-sm">
-      <button type="button" onClick={() => setOpen(!open)} className="grid h-6 w-6 place-items-center rounded hover:bg-muted">{unit.children.length ? open ? <ChevronDown size={17} /> : <ChevronRight size={17} /> : null}</button>
-      <Building2 size={18} className="text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">{unit.name}</p><p className="text-xs text-muted-foreground">{unit.code} · {types[unit.type] ?? unit.type}</p></div>
-      <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-        <Button size="icon" variant="ghost" title="Thêm đơn vị con" onClick={() => onUnit({ parentId: unit.id, code: '', name: '', type: 'department' })}><Plus size={16} /></Button>
-        <Button size="icon" variant="ghost" title="Thêm nhân sự" onClick={() => onPerson(unit.id)}><UserPlus size={16} /></Button>
-        <Button size="icon" variant="ghost" title="Chỉnh sửa" onClick={() => onUnit({ id: unit.id, parentId: unit.parentId ?? undefined, code: unit.code, name: unit.name, type: unit.type })}><Pencil size={16} /></Button>
-        <Button size="icon" variant="ghost" title="Xóa" onClick={() => onDelete(unit.id)}><Trash2 size={16} /></Button>
-      </div>
-    </div>
-    {open && <div className="space-y-2 py-3">{unit.personnel.length > 0 && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{importantPersonnel.map((person) => <PersonnelNode key={`${unit.id}-${person.id}-${person.positionName}`} person={person} />)}{staffCount > 0 && <PersonnelSummaryNode count={staffCount} onClick={() => onSummary(unit.name, unit.personnel.filter((person) => person.rank >= 6))} />}</div>}{unit.children.map((child) => <Node key={child.id} unit={child} onUnit={onUnit} onPerson={onPerson} onDelete={onDelete} onSummary={onSummary} />)}</div>}
-  </div>;
 }
 
 function TreeItem({ unit, selectedId, onSelect }: { unit: OrganizationChartUnit; selectedId: string; onSelect: (unit: OrganizationChartUnit) => void }) {
