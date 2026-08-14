@@ -278,6 +278,7 @@ export const navigationConfig: readonly NavigationItem[] = [
       { key: PERMISSIONS.WORK_ORDER_REVIEW, label: 'Kiểm tra kỹ thuật' },
     ],
     children: [
+      { id: 'nhakho', label: 'Cây Nhà kho & Vật tư 360°', href: '/nhakho', tenantAware: true, module: 'cmms' },
       { id: 'equipment', label: 'Thiết bị & Tài sản', href: '/equipment', tenantAware: true, module: 'cmms' },
       { id: 'inventory', label: 'Kho vật tư', href: '/inventory', tenantAware: true, module: 'cmms' },
       { id: 'work-orders', label: 'Phiếu công việc', href: '/work-orders', tenantAware: true, module: 'cmms' },
