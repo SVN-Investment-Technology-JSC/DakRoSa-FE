@@ -1,4 +1,9 @@
-import { NamingDictionary, WarehouseNode } from '@/types/warehouse';
+import {
+  NamingDictionary,
+  WarehouseNode,
+  InventoryTransaction,
+  InventoryStock,
+} from '@/types/warehouse';
 
 export const DEFAULT_NAMING_DICTIONARY: NamingDictionary = {
   companyCodes: {
@@ -42,7 +47,7 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
     symbol: 'SB-HQ',
     condition: 'operating',
     location: 'Tòa nhà Điều hành Trung tâm, TP. Đà Nẵng',
-    specifications: 'Tổng công suất quản lý 250MW',
+    specifications: 'Tổng công suất điều hành 250MW (Hệ thống 3 nhà máy thành viên)',
     manufacturer: 'Tập đoàn Sông Ba',
     children: [
       {
@@ -50,7 +55,7 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
         tenantId: 'tenant-1',
         parentId: 'comp-1',
         code: 'SB-KD',
-        name: 'Nhà máy Thủy điện Khe Diên',
+        name: 'Nhà máy Thủy điện Khe Diên (Plant 1)',
         assetKind: 'factory',
         symbol: 'KD-PLANT',
         condition: 'operating',
@@ -63,13 +68,13 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
             tenantId: 'tenant-1',
             parentId: 'fact-1',
             code: 'SB-KD-T',
-            name: 'Tổ máy H1 - Phân hệ Tuabin',
+            name: 'Phân hệ Tuabin Thủy lực H1 (Hydropower Turbine T1)',
             assetKind: 'main_equipment',
             symbol: 'T-H1',
             condition: 'operating',
             location: 'Nhà máy Khe Diên - Gian máy tầng hầm B1',
             specifications: 'Cột áp định mức H=120m, Lưu lượng Q=8.5 m3/s, Tốc độ 750 v/p',
-            manufacturer: 'Harbin Electric',
+            manufacturer: 'Harbin Electric Machinery',
             children: [
               {
                 id: 'part-1',
@@ -80,9 +85,60 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                 assetKind: 'part',
                 symbol: 'S-01',
                 condition: 'operating',
+                model: 'SB-KD-T-S-01',
+                serialNumber: 'SB-HNT000001',
+                material: 'Thép hợp kim Q345R',
+                dimensions: 'D=1200mm, dày 28mm',
+                operatingTemp: '5 - 45°C',
+                pressureRating: '1.6 MPa',
                 location: 'Kho vật tư chính - Phân khu A - Kệ 01',
                 specifications: 'Thép hợp kim Q345R hàn định hình, đường kính vào D=1200mm',
                 manufacturer: 'Harbin Electric Machinery',
+                requiredTools: ['Cờ lê lực 150Nm', 'Đồng hồ đo áp suất cầm tay'],
+                laborRequirement: '2 Workers',
+                assignedTeam: 'Đội Cơ khí Thủy lực',
+                category: 'SPARE_PART',
+                stock: {
+                  itemId: 'item-s01',
+                  itemCode: 'SB-KD-T-S-01',
+                  itemName: 'Buồng xoắn Tuabin H1 (Spiral Case)',
+                  unit: 'Bộ',
+                  quantityOnHand: 1,
+                  quantityReserved: 0,
+                  quantityAvailable: 1,
+                  minStock: 1,
+                  maxStock: 2,
+                  unitPrice: 450000000,
+                  storageLocation: {
+                    id: 'loc-1',
+                    warehouseId: 'wh-kd',
+                    warehouseName: 'Kho Vật Tư Khe Diên',
+                    zone: 'Phân khu A',
+                    shelf: 'Kệ 01',
+                    bin: 'Ô Sàn 01',
+                    fullAddress: 'Kho Khe Diên - Khu A - Kệ 01 - Ô Sàn 01',
+                  },
+                },
+                transactions: [
+                  {
+                    id: 'tx-1',
+                    transactionCode: 'NK-202601-001',
+                    transactionType: 'IN',
+                    itemCode: 'SB-KD-T-S-01',
+                    itemName: 'Buồng xoắn Tuabin H1 (Spiral Case)',
+                    quantity: 1,
+                    unit: 'Bộ',
+                    fromLocation: 'Nhà cung cấp Harbin Heavy',
+                    toLocation: 'Kho Khe Diên - Khu A - Kệ 01',
+                    referenceType: 'PURCHASE_ORDER',
+                    referenceId: 'PO-2026-001',
+                    requester: 'Trần Văn Bình',
+                    approver: 'Nguyễn Văn Tuấn',
+                    executor: 'Lê Hữu Đạt',
+                    status: 'COMPLETED',
+                    createdAt: '2026-01-15 09:30',
+                  },
+                ],
                 schedules: [
                   {
                     id: 'sch-1',
@@ -126,44 +182,13 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                     partCode: 'SB-HN-T-S-01',
                     availableQty: 1,
                     matchRate: '100% Lắp lẫn trực tiếp',
+                    specRating: '100 MP/a',
+                    statusNote: 'Dự phòng hoàn hảo',
                   },
                 ],
                 timeline: [
                   { date: '01/08/2026', event: 'Kiểm tra định kỳ tháng 8/2026 - Áp suất ổn định 1.2 MPa', type: 'inspection' },
                   { date: '15/05/2026', event: 'Bảo dưỡng tra mỡ van xả cặn', type: 'maintenance' },
-                ],
-                children: [],
-              },
-              {
-                id: 'part-2',
-                tenantId: 'tenant-1',
-                parentId: 'main-1',
-                code: 'SB-KD-T-Gu-01',
-                name: 'Cánh hướng nước (Guide Vanes)',
-                assetKind: 'part',
-                symbol: 'Gu-01',
-                condition: 'operating',
-                location: 'Kho phụ tùng Tuabin - Kệ B2 - Ngăn 03',
-                specifications: 'Thép không gỉ đúc ZG06Cr13Ni4Mo, gồm 16 cánh hướng',
-                manufacturer: 'Andritz Hydro',
-                schedules: [
-                  {
-                    id: 'sch-3',
-                    frequency: 'week',
-                    value: 'x',
-                    taskName: 'Đo độ hở khe cánh hướng và kiểm tra chốt an toàn',
-                    laborCount: 2,
-                    startTime: '13:30',
-                    finishTime: '16:00',
-                    toolsNeeded: ['Thước lá căn lá Mitutoyo', 'Đồng hồ so'],
-                    assignedTeam: ['Phạm Hùng Cường', 'Vũ Đức Thịnh'],
-                    nextDueDate: 'Thứ 2 hàng tuần',
-                    workOrderMode: 'auto',
-                    notes: 'Đảm bảo độ hở khe hở đầu cánh < 0.15mm',
-                  },
-                ],
-                documents: [
-                  { id: 'd4', name: 'Huong_Dan_Can_Khe_Ho_Canh_Huong.pdf', type: 'manual', fileUrl: '#', uploadedAt: '05/02/2026' },
                 ],
                 children: [],
               },
@@ -176,40 +201,153 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                 assetKind: 'part',
                 symbol: 'Sh-01',
                 condition: 'operating',
+                model: 'SB-KD-T-Sh-01',
+                serialNumber: 'SB-HNT000003',
+                material: 'Thép rèn hợp kim 20SiMn',
+                dimensions: 'D=380mm, L=3200mm',
+                operatingTemp: '-10 - 70°C',
+                pressureRating: '500 kN.m Torque',
                 location: 'Gian máy - Vị trí kết nối máy phát',
                 specifications: 'Thép rèn hợp kim 20SiMn, đường kính D=380mm, chiều dài L=3200mm',
                 manufacturer: 'Harbin Heavy Machinery',
-                schedules: [
-                  {
-                    id: 'sch-4',
-                    frequency: 'quarter',
-                    value: 'x',
-                    taskName: 'Đo độ đảo trục và kiểm tra độ rung rung động',
-                    laborCount: 2,
-                    startTime: '08:00',
-                    finishTime: '17:00',
-                    toolsNeeded: ['Thiết bị đo rung Bently Nevada', 'Đồng hồ so từ tính'],
-                    assignedTeam: ['Kỹ sư Chẩn đoán rung động'],
-                    nextDueDate: '10/10/2026',
-                    workOrderMode: 'auto',
+                requiredTools: ['Thiết bị đo rung Bently Nevada', 'Đồng hồ so từ tính', 'Cẩu trục 30T'],
+                laborRequirement: '4 Workers',
+                assignedTeam: 'Đội Đại tu Cơ khí',
+                category: 'SPARE_PART',
+                stock: {
+                  itemId: 'item-sh01',
+                  itemCode: 'SB-KD-T-Sh-01',
+                  itemName: 'Trục chính Tuabin (Turbine Main Shaft)',
+                  unit: 'Bộ',
+                  quantityOnHand: 1,
+                  quantityReserved: 0,
+                  quantityAvailable: 1,
+                  minStock: 1,
+                  maxStock: 1,
+                  unitPrice: 850000000,
+                  storageLocation: {
+                    id: 'loc-sh',
+                    warehouseId: 'wh-kd',
+                    warehouseName: 'Kho Khe Diên',
+                    zone: 'Khu A',
+                    shelf: 'Bệ lắp máy',
+                    bin: 'Vị trí máy',
+                    fullAddress: 'Nhà máy Khe Diên - Gian máy B1',
                   },
-                ],
-                documents: [
-                  { id: 'd5', name: 'Shaft_Alignment_Report_2026.pdf', type: 'test_report', fileUrl: '#', uploadedAt: '12/03/2026' },
-                ],
+                },
                 children: [
                   {
                     id: 'subpart-1',
                     tenantId: 'tenant-1',
                     parentId: 'part-3',
                     code: 'SB-KD-T-Sh-Ro-01',
-                    name: 'Roăng làm kín trục Tuabin (Shaft Gasket Seal)',
+                    name: 'SB-KD-T-Sh-Ro-01 (Shaft Sealing Ring)',
                     assetKind: 'part',
                     symbol: 'Ro-01',
-                    condition: 'standby',
-                    location: 'Kho vật tư số 01 - Kệ A2 - Ngăn 04 (Vị trí lưu trữ sẵn)',
-                    specifications: 'Vật liệu Carbon/PTFE chịu mài mòn, bôi trơn bằng nước kỹ thuật',
+                    condition: 'operating',
+                    
+                    // Exact details from main_UI.jpg
+                    model: 'SB-KD-T-Sh-Ro-01',
+                    serialNumber: 'SB-HNT000002',
+                    material: 'Nitrile Rubber / Carbon PTFE',
+                    dimensions: '120 × 12.9 mm × 15.20 mm',
+                    operatingTemp: '-20 - 50°C',
+                    pressureRating: '100 MP/a',
+                    location: 'Kho vật tư số 01 - Kệ A2 - Tầng 2 - Ngăn 04',
+                    specifications: 'Vòng roăng làm kín trục cao cấp Nitrile Rubber chịu mài mòn cao, bôi trơn nước kỹ thuật',
                     manufacturer: 'EagleBurgmann',
+                    
+                    requiredTools: ['Torque Wrench 150Nm', 'Vernier Caliper'],
+                    laborRequirement: '2 Workers',
+                    assignedTeam: 'Nguyễn Văn A (Đội trưởng cơ khí), Trần Văn B',
+                    category: 'SPARE_PART',
+                    
+                    stock: {
+                      itemId: 'item-ro01',
+                      itemCode: 'SB-KD-T-Sh-Ro-01',
+                      itemName: 'Roăng làm kín trục Tuabin (Shaft Sealing Ring)',
+                      unit: 'Cái',
+                      quantityOnHand: 3,
+                      quantityReserved: 1,
+                      quantityAvailable: 2,
+                      minStock: 2,
+                      maxStock: 6,
+                      unitPrice: 18500000,
+                      storageLocation: {
+                        id: 'loc-ro1',
+                        warehouseId: 'wh-kd',
+                        warehouseName: 'Kho Vật tư Số 01 Khe Diên',
+                        zone: 'Phân khu A',
+                        shelf: 'Kệ A2 - Tầng 2',
+                        bin: 'Ngăn 04',
+                        fullAddress: 'Kho vật tư số 01 - Kệ A2 - Tầng 2 - Ngăn 04',
+                      },
+                    },
+                    
+                    transactions: [
+                      {
+                        id: 'tx-ro-1',
+                        transactionCode: 'NK-202606-004',
+                        transactionType: 'IN',
+                        itemCode: 'SB-KD-T-Sh-Ro-01',
+                        itemName: 'Roăng làm kín trục Tuabin (Shaft Sealing Ring)',
+                        quantity: 4,
+                        unit: 'Cái',
+                        fromLocation: 'Nhà cung cấp EagleBurgmann VN',
+                        toLocation: 'Kho KD - Kệ A2 - Ngăn 04',
+                        referenceType: 'PURCHASE_ORDER',
+                        referenceId: 'PO-2026-042',
+                        requester: 'Phòng Kỹ thuật',
+                        approver: 'Nguyễn Văn Tuấn (PGĐ Kỹ thuật)',
+                        executor: 'Lê Hữu Đạt (Thủ kho)',
+                        status: 'COMPLETED',
+                        createdAt: '2026-06-10 14:15',
+                        notes: 'Nhập lô hàng theo hợp đồng cung ứng định kỳ',
+                      },
+                      {
+                        id: 'tx-ro-2',
+                        transactionCode: 'XK-WO-202608-012',
+                        transactionType: 'OUT',
+                        itemCode: 'SB-KD-T-Sh-Ro-01',
+                        itemName: 'Roăng làm kín trục Tuabin (Shaft Sealing Ring)',
+                        quantity: 1,
+                        unit: 'Cái',
+                        fromLocation: 'Kho KD - Kệ A2 - Ngăn 04',
+                        toLocation: 'Tổ máy H1 - Gian máy B1',
+                        referenceType: 'WORK_ORDER',
+                        referenceId: 'WO-2026-0815',
+                        requester: 'Nguyễn Văn A (Đội trưởng cơ khí)',
+                        approver: 'Nguyễn Văn Tuấn',
+                        executor: 'Lê Hữu Đạt (Thủ kho)',
+                        status: 'COMPLETED',
+                        createdAt: '2026-08-01 08:45',
+                        notes: 'Xuất thay thế định kỳ kỳ 2 cho Tổ máy H1',
+                      },
+                    ],
+
+                    bomItems: [
+                      {
+                        id: 'bom-1',
+                        code: 'OIL-SKF-LGMT3',
+                        name: 'Mỡ bôi trơn làm kín SKF LGMT 3/0.4',
+                        category: 'CONSUMABLE',
+                        quantity: 1,
+                        unit: 'Tuýp',
+                        condition: 'Sẵn sàng trong kho',
+                        stockStatus: 'available',
+                      },
+                      {
+                        id: 'bom-2',
+                        code: 'BOLT-M16-SS316',
+                        name: 'Bộ bu lông siết mặt bích Inox 316 M16x60',
+                        category: 'SPARE_PART',
+                        quantity: 8,
+                        unit: 'Bộ',
+                        condition: 'Sẵn sàng trong kho',
+                        stockStatus: 'available',
+                      },
+                    ],
+
                     schedules: [
                       {
                         id: 'sch-5',
@@ -219,30 +357,52 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                         laborCount: 2,
                         startTime: '07:30',
                         finishTime: '16:30',
-                        toolsNeeded: ['Bộ vam chuyên dụng tháo roăng', 'Dụng cụ ép thủy lực', 'Bộ mỡ bôi trơn'],
+                        toolsNeeded: ['Torque Wrench 150Nm', 'Vernier Caliper', 'Dụng cụ ép thủy lực', 'Bộ mỡ bôi trơn'],
                         assignedTeam: ['Nguyễn Văn A (Đội trưởng cơ khí)', 'Trần Văn B'],
                         nextDueDate: '15/12/2026 (Lần 3 trong năm)',
                         workOrderMode: 'auto',
                         notes: 'Ngắt hoàn toàn nước kỹ thuật trước khi tháo roăng',
                       },
+                      {
+                        id: 'sch-5b',
+                        frequency: 'month',
+                        value: 'x',
+                        taskName: 'Kiểm tra lưu lượng nước rò qua khe roăng trục',
+                        laborCount: 1,
+                        startTime: '08:00',
+                        finishTime: '09:00',
+                        toolsNeeded: ['Đồng hồ đo lưu lượng', 'Đèn rọi kiểm tra'],
+                        assignedTeam: ['KTV Vận hành ca'],
+                        nextDueDate: 'Hàng tháng',
+                        workOrderMode: 'auto',
+                      },
                     ],
+
                     documents: [
-                      { id: 'd6', name: 'EagleBurgmann_Seal_Datasheet.pdf', type: 'manual', fileUrl: '#', uploadedAt: '20/04/2026' },
-                      { id: 'd7', name: 'Chung_Chi_Xuat_Xuong_Roang.pdf', type: 'cocq', fileUrl: '#', uploadedAt: '22/04/2026' },
+                      { id: 'd6', name: 'Manual.pdf', type: 'manual', fileUrl: '#', fileSize: '2.4 MB', uploadedAt: '20/04/2026' },
+                      { id: 'd7', name: 'CO-CQ.pdf', type: 'cocq', fileUrl: '#', fileSize: '1.1 MB', uploadedAt: '22/04/2026' },
+                      { id: 'd8', name: 'Test_Report.pdf', type: 'test_report', fileUrl: '#', fileSize: '3.8 MB', uploadedAt: '25/04/2026' },
                     ],
+
                     crossPlantSpareAvailable: true,
                     crossPlantSuggestions: [
                       {
-                        plantName: "Nhà máy Thủy điện Krông H'năng (HN)",
+                        plantName: "Nhà máy Thủy điện Krông H'năng (Plant 2)",
                         warehouseName: 'Kho phụ tùng máy phát HN - Kệ C1',
                         partCode: 'SB-HN-T-Sh-Ro-02',
-                        availableQty: 2,
-                        matchRate: '100% (Quy cách tiêu chuẩn trục D=380mm)',
+                        availableQty: 1,
+                        matchRate: '100% Lắp lẫn tương thích trực tiếp',
+                        specRating: '2.5 kW / Standby',
+                        statusNote: 'Manual Engineer Review & Transfer Approval required',
                       },
                     ],
+
                     timeline: [
-                      { date: '10/06/2026', event: 'Thay thế định kỳ lần 2 - Kiểm tra độ mòn < 0.2mm', type: 'maintenance' },
+                      { date: '01/08/2026', event: 'Xuất kho 1 cái phục vụ thay thế theo Lệnh WO-2026-0815', type: 'maintenance', reference: 'WO-2026-0815' },
+                      { date: '10/06/2026', event: 'Nhập kho 4 cái theo hợp đồng cung ứng PO-2026-042', type: 'inspection', reference: 'PO-2026-042' },
+                      { date: '15/03/2026', event: 'Kiểm định khe hở làm kín định kỳ Quý 1 - Đạt tiêu chuẩn', type: 'inspection' },
                     ],
+
                     children: [],
                   },
                   {
@@ -254,9 +414,31 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                     assetKind: 'part',
                     symbol: 'Be-01',
                     condition: 'operating',
+                    model: 'SB-KD-T-Sh-Be-01',
+                    serialNumber: 'SB-HNT000004',
+                    material: 'Bạc babbitt SnSb11Cu6',
+                    dimensions: 'D=380mm, L=420mm',
+                    operatingTemp: '30 - 65°C',
+                    pressureRating: '2.5 MPa Oil Film',
                     location: 'Vị trí bệ đỡ trục Tuabin',
-                    specifications: 'Bạc babbitt đúc lót hợp kim SnSb11Cu6, bôi trơn dầu tuần hoàn',
+                    specifications: 'Bạc babbitt đúc lót hợp kim SnSb11Cu6, bôi trơn dầu tuần hoàn ISO VG 46',
                     manufacturer: 'Michell Bearings',
+                    requiredTools: ['Máy lọc dầu ly tâm', 'Thước panme đo khe hở', 'Cần cẩu trục 30T'],
+                    laborRequirement: '4 Workers',
+                    assignedTeam: 'Đội Đại tu Cơ khí Tổng công ty',
+                    category: 'SPARE_PART',
+                    stock: {
+                      itemId: 'item-be01',
+                      itemCode: 'SB-KD-T-Sh-Be-01',
+                      itemName: 'Ổ đỡ / Ổ hướng trục Tuabin (Turbine Guide Bearing)',
+                      unit: 'Bộ',
+                      quantityOnHand: 2,
+                      quantityReserved: 0,
+                      quantityAvailable: 2,
+                      minStock: 1,
+                      maxStock: 2,
+                      unitPrice: 320000000,
+                    },
                     schedules: [
                       {
                         id: 'sch-6',
@@ -286,7 +468,7 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
             tenantId: 'tenant-1',
             parentId: 'fact-1',
             code: 'SB-KD-G',
-            name: 'Tổ máy H1 - Phân hệ Máy phát (Generator)',
+            name: 'Phân hệ Máy phát Điện H1 (Generator G1)',
             assetKind: 'main_equipment',
             symbol: 'G-H1',
             condition: 'operating',
@@ -306,6 +488,18 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                 location: 'Kho phụ tùng điện máy phát - Kệ 03',
                 specifications: 'Ổ đỡ gối tự lựa babbitt tải trọng 80 tấn',
                 manufacturer: 'Harbin Electric',
+                category: 'SPARE_PART',
+                stock: {
+                  itemId: 'item-gbe01',
+                  itemCode: 'SB-KD-G-Be-01',
+                  itemName: 'Ổ đỡ máy phát (Generator Thrust Bearing)',
+                  unit: 'Bộ',
+                  quantityOnHand: 1,
+                  quantityReserved: 0,
+                  quantityAvailable: 1,
+                  minStock: 1,
+                  maxStock: 2,
+                },
                 schedules: [],
                 children: [],
               },
@@ -318,7 +512,7 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
         tenantId: 'tenant-1',
         parentId: 'comp-1',
         code: 'SB-HN',
-        name: "Nhà máy Thủy điện Krông H'năng",
+        name: "Nhà máy Thủy điện Krông H'năng (Plant 2)",
         assetKind: 'factory',
         symbol: 'HN-PLANT',
         condition: 'operating',
@@ -344,13 +538,31 @@ const INITIAL_WAREHOUSE_TREE: WarehouseNode[] = [
                 tenantId: 'tenant-1',
                 parentId: 'main-3',
                 code: 'SB-HN-T-Sh-Ro-02',
-                name: 'Roăng làm kín trục Tuabin HN (Dự phòng)',
+                name: 'Roăng làm kín trục Tuabin HN (Standby Unit)',
                 assetKind: 'part',
                 symbol: 'Ro-02',
                 condition: 'standby',
-                location: 'Kho Tổng Krông Hnăng - Kệ dự phòng A1',
-                specifications: 'Vật liệu Carbon/PTFE tiêu chuẩn D=380mm',
+                model: 'SB-HN-T-Sh-Ro-02',
+                serialNumber: 'SB-HNT000009',
+                material: 'Nitrile Rubber / Carbon PTFE',
+                dimensions: '120 × 12.9 mm × 15.20 mm',
+                operatingTemp: '-20 - 50°C',
+                pressureRating: '100 MP/a',
+                location: 'Kho Tổng Krông Hnăng - Kệ dự phòng A1 - Ngăn 02',
+                specifications: 'Vật liệu Carbon/PTFE tiêu chuẩn D=380mm, 2.5 kW standby buffer',
                 manufacturer: 'EagleBurgmann',
+                category: 'SPARE_PART',
+                stock: {
+                  itemId: 'item-hn-ro02',
+                  itemCode: 'SB-HN-T-Sh-Ro-02',
+                  itemName: 'Roăng làm kín trục Tuabin HN (Standby Unit)',
+                  unit: 'Cái',
+                  quantityOnHand: 1,
+                  quantityReserved: 0,
+                  quantityAvailable: 1,
+                  minStock: 1,
+                  maxStock: 3,
+                },
                 schedules: [],
                 children: [],
               },
@@ -443,6 +655,96 @@ class WarehouseService {
     };
 
     return findAndDelete(this.tree);
+  }
+
+  /**
+   * Thêm giao dịch kho mới (Transaction-Driven theo plan_2.md & dexuat.md)
+   * và tự động cập nhật số dư tồn kho On-Hand / Reserved / Available
+   */
+  async addTransaction(
+    nodeId: string,
+    transaction: Omit<InventoryTransaction, 'id' | 'createdAt'>
+  ): Promise<InventoryTransaction> {
+    const newTx: InventoryTransaction = {
+      ...transaction,
+      id: `tx-${Date.now()}`,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    };
+
+    const node = await this.findNodeById(nodeId);
+    if (node) {
+      node.transactions = node.transactions || [];
+      node.transactions.unshift(newTx);
+
+      // Cập nhật số dư kho nếu có stock
+      if (node.stock) {
+        if (newTx.transactionType === 'IN' || newTx.transactionType === 'RETURN') {
+          node.stock.quantityOnHand += newTx.quantity;
+        } else if (newTx.transactionType === 'OUT' || newTx.transactionType === 'BORROW') {
+          node.stock.quantityOnHand = Math.max(0, node.stock.quantityOnHand - newTx.quantity);
+          if (newTx.referenceType === 'WORK_ORDER' && node.stock.quantityReserved > 0) {
+            node.stock.quantityReserved = Math.max(0, node.stock.quantityReserved - newTx.quantity);
+          }
+        }
+        node.stock.quantityAvailable = Math.max(
+          0,
+          node.stock.quantityOnHand - node.stock.quantityReserved
+        );
+      }
+
+      // Thêm vào timeline
+      node.timeline = node.timeline || [];
+      node.timeline.unshift({
+        date: new Date().toLocaleDateString('vi-VN'),
+        event: `Giao dịch ${newTx.transactionType}: ${newTx.transactionCode} (${newTx.quantity} ${newTx.unit}) - ${newTx.notes || ''}`,
+        type: newTx.transactionType === 'IN' ? 'inspection' : 'maintenance',
+        reference: newTx.referenceId,
+      });
+
+      await this.updateNode(nodeId, node);
+    }
+
+    return newTx;
+  }
+
+  /**
+   * Giữ chỗ vật tư cho Work Order (Reservation mechanism theo plan_2.md)
+   */
+  async reserveMaterial(nodeId: string, qty: number, workOrderId: string): Promise<boolean> {
+    const node = await this.findNodeById(nodeId);
+    if (!node || !node.stock) return false;
+
+    if (node.stock.quantityAvailable < qty) {
+      throw new Error(`Tồn kho khả dụng không đủ để giữ chỗ (Còn: ${node.stock.quantityAvailable}, Yêu cầu: ${qty})`);
+    }
+
+    node.stock.quantityReserved += qty;
+    node.stock.quantityAvailable = node.stock.quantityOnHand - node.stock.quantityReserved;
+
+    node.timeline = node.timeline || [];
+    node.timeline.unshift({
+      date: new Date().toLocaleDateString('vi-VN'),
+      event: `Giữ chỗ ${qty} ${node.stock.unit} cho Lệnh bảo trì ${workOrderId}`,
+      type: 'maintenance',
+      reference: workOrderId,
+    });
+
+    await this.updateNode(nodeId, node);
+    return true;
+  }
+
+  async findNodeById(id: string): Promise<WarehouseNode | null> {
+    const walk = (nodes: WarehouseNode[]): WarehouseNode | null => {
+      for (const n of nodes) {
+        if (n.id === id) return n;
+        if (n.children?.length) {
+          const res = walk(n.children);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+    return walk(this.tree);
   }
 
   generateCode(params: {
