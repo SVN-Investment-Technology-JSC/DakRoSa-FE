@@ -1899,30 +1899,85 @@ export function WarehousePage() {
 
       {/* Dialog: Maintenance Matrix Overview */}
       <Dialog open={matrixModalOpen} onOpenChange={setMatrixModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Layers className="text-blue-600" size={18} />
-              Ma Trận Lập Lịch Bảo Trì Ngăn Ngừa (Preventive Maintenance Matrix)
-            </DialogTitle>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-5xl min-h-0 flex-col gap-0 overflow-hidden rounded-xl border bg-background p-0 shadow-2xl sm:max-h-[90dvh] sm:max-w-5xl">
+          <DialogHeader className="shrink-0 border-b bg-muted/40 px-4 py-4 pr-12 sm:px-6 sm:pr-12">
+            <div className="flex min-w-0 items-start gap-3 sm:items-center">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                <Layers size={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-left text-base font-bold leading-snug text-foreground md:text-lg">
+                  Ma Trận Lập Lịch Bảo Trì Ngăn Ngừa (Preventive Maintenance Matrix)
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Điều phối chu kỳ bảo dưỡng định kỳ và gán lệnh thực thi tự động theo từng cấp bộ phận / phụ tùng
+                </p>
+              </div>
+              <span className="hidden shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 lg:inline-flex">
+                Tổng số: {allParts.length} phụ tùng
+              </span>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4 text-xs">
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-muted/80 text-foreground border-b font-bold">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/20 px-4 py-2.5 rounded-lg border">
+              <div className="flex flex-wrap items-center gap-4 text-xs font-medium">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0" /> Day (D): Hàng ngày
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shrink-0" /> Week (W): Hàng tuần
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="h-2.5 w-2.5 rounded-full bg-violet-500 shrink-0" /> Month (M): Hàng tháng
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" /> Quarter (Q): Hàng quý
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" /> Year (Y): Hàng năm
+                </span>
+              </div>
+              <span className="text-[11px] text-muted-foreground italic">
+                * Ký hiệu &ldquo;x&rdquo; hoặc số biểu thị lượt bảo dưỡng định kỳ được kích hoạt
+              </span>
+            </div>
+
+            <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-border/80 bg-card shadow-2xs">
+              <table className="w-full min-w-[900px] table-fixed border-collapse text-left text-xs">
+                <colgroup>
+                  <col className="w-[32%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[11%]" />
+                </colgroup>
+                <thead className="bg-muted/70 text-foreground border-b font-bold tracking-wider uppercase text-[11px]">
                   <tr>
-                    <th className="p-3">Bộ phận / Chi tiết (Parts)</th>
-                    <th className="p-3 font-mono">Mã tài sản</th>
-                    <th className="p-3 text-center bg-blue-50/50 dark:bg-blue-950/20">Day</th>
-                    <th className="p-3 text-center bg-indigo-50/50 dark:bg-indigo-950/20">Week</th>
-                    <th className="p-3 text-center bg-violet-50/50 dark:bg-violet-950/20">Month</th>
-                    <th className="p-3 text-center bg-amber-50/50 dark:bg-amber-950/20">Quarter</th>
-                    <th className="p-3 text-center bg-rose-50/50 dark:bg-rose-950/20">Year</th>
-                    <th className="p-3 text-right">Thao tác</th>
+                    <th className="px-4 py-3 align-middle">Tên Bộ Phận / Chi Tiết</th>
+                    <th className="px-4 py-3 align-middle font-mono">Mã Định Danh (SKU)</th>
+                    <th className="border-x border-border/50 bg-blue-50/60 px-2 py-3 text-center align-middle text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+                      Day
+                    </th>
+                    <th className="border-r border-border/50 bg-indigo-50/60 px-2 py-3 text-center align-middle text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300">
+                      Week
+                    </th>
+                    <th className="border-r border-border/50 bg-violet-50/60 px-2 py-3 text-center align-middle text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
+                      Month
+                    </th>
+                    <th className="border-r border-border/50 bg-amber-50/60 px-2 py-3 text-center align-middle text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                      Quarter
+                    </th>
+                    <th className="border-r border-border/50 bg-rose-50/60 px-2 py-3 text-center align-middle text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+                      Year
+                    </th>
+                    <th className="px-4 py-3 text-center align-middle">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-border/60">
                   {allParts.map((part) => {
                     const daySch = part.schedules?.find((s) => s.frequency === 'day');
                     const weekSch = part.schedules?.find((s) => s.frequency === 'week');
@@ -1931,35 +1986,72 @@ export function WarehousePage() {
                     const yearSch = part.schedules?.find((s) => s.frequency === 'year');
 
                     return (
-                      <tr key={part.id} className="hover:bg-muted/30">
-                        <td className="p-3 font-semibold text-foreground">{part.name}</td>
-                        <td className="p-3 font-mono text-muted-foreground">{part.code}</td>
-                        <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/30 dark:bg-blue-950/10">
-                          {daySch ? (daySch.value || 'x') : '—'}
+                      <tr key={part.id} className="align-middle transition-colors hover:bg-muted/40">
+                        <td className="px-4 py-3 font-semibold text-foreground">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-muted/60 text-xs">⚙️</span>
+                            <span className="min-w-0 break-words leading-snug">{part.name}</span>
+                          </div>
                         </td>
-                        <td className="p-3 text-center font-bold text-indigo-600 bg-indigo-50/30 dark:bg-indigo-950/10">
-                          {weekSch ? (weekSch.value || 'x') : '—'}
+                        <td className="py-3 px-4 font-mono font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {part.code}
                         </td>
-                        <td className="p-3 text-center font-bold text-violet-600 bg-violet-50/30 dark:bg-violet-950/10">
-                          {monthSch ? (monthSch.value || 'x') : '—'}
+                        <td className="py-3 px-2 text-center font-bold bg-blue-50/30 dark:bg-blue-950/10 border-x border-border/40">
+                          {daySch ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300 text-xs">
+                              {daySch.value || 'x'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30 font-normal">—</span>
+                          )}
                         </td>
-                        <td className="p-3 text-center font-bold text-amber-600 bg-amber-50/30 dark:bg-amber-950/10">
-                          {quarterSch ? (quarterSch.value || '1') : '—'}
+                        <td className="py-3 px-2 text-center font-bold bg-indigo-50/30 dark:bg-indigo-950/10 border-r border-border/40">
+                          {weekSch ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 text-xs">
+                              {weekSch.value || 'x'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30 font-normal">—</span>
+                          )}
                         </td>
-                        <td className="p-3 text-center font-bold text-rose-600 bg-rose-50/30 dark:bg-rose-950/10">
-                          {yearSch ? (yearSch.value || '1') : '—'}
+                        <td className="py-3 px-2 text-center font-bold bg-violet-50/30 dark:bg-violet-950/10 border-r border-border/40">
+                          {monthSch ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300 text-xs">
+                              {monthSch.value || 'x'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30 font-normal">—</span>
+                          )}
                         </td>
-                        <td className="p-3 text-right">
+                        <td className="py-3 px-2 text-center font-bold bg-amber-50/30 dark:bg-amber-950/10 border-r border-border/40">
+                          {quarterSch ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 text-xs">
+                              {quarterSch.value || '1'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30 font-normal">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-2 text-center font-bold bg-rose-50/30 dark:bg-rose-950/10 border-r border-border/40">
+                          {yearSch ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300 text-xs">
+                              {yearSch.value || '1'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30 font-normal">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs"
+                            variant="outline"
+                            className="h-7 text-xs font-semibold px-2.5 whitespace-nowrap hover:bg-primary hover:text-primary-foreground"
                             onClick={() => {
                               setSelectedNode(part);
                               setMatrixModalOpen(false);
                             }}
                           >
-                            Xem chi tiết
+                            Chi Tiết
                           </Button>
                         </td>
                       </tr>
@@ -1969,45 +2061,118 @@ export function WarehousePage() {
               </table>
             </div>
           </div>
+
+          <div className="flex shrink-0 justify-end border-t bg-muted/20 px-4 py-3 sm:px-6">
+            <Button variant="outline" size="sm" onClick={() => setMatrixModalOpen(false)}>
+              Đóng Cửa Sổ
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Dialog: Settings Dictionary */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sliders size={18} className="text-primary" />
-              Từ Điển Quy Cách Đặt Tên (Naming Dictionary)
-            </DialogTitle>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-4xl min-h-0 flex-col gap-0 overflow-hidden rounded-xl border bg-background p-0 shadow-2xl sm:max-h-[90dvh] sm:max-w-4xl">
+          <DialogHeader className="shrink-0 border-b bg-muted/40 px-4 py-4 pr-12 sm:px-6 sm:pr-12">
+            <div className="flex min-w-0 items-start gap-3 sm:items-center">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400">
+                <Sliders size={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-left text-base font-bold leading-snug text-foreground md:text-lg">
+                  Từ Điển Quy Cách Đặt Tên Thiết Bị (Naming Dictionary)
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Quy tắc sinh mã tự động chuẩn hóa: [Mã Cty] - [Mã Nhà Máy] - [Thiết Bị Chính] - [Bộ Phận Con] - [Số Thứ Tự]
+                </p>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4 text-xs">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border p-3 space-y-2">
-                <h4 className="font-bold text-foreground">Phân hệ Chính (Main Parts)</h4>
-                <div className="space-y-1 max-h-56 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 text-xs sm:p-5">
+            {/* Rule Preview Banner */}
+            <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3.5 dark:border-violet-900/60 dark:bg-violet-950/20">
+              <p className="font-bold text-violet-950 dark:text-violet-200 text-xs flex items-center gap-1.5">
+                <CheckCircle2 size={15} className="text-violet-600 shrink-0" /> Cấu trúc ghép mã chuẩn (Naming Standard):
+              </p>
+              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 font-mono text-xs">
+                <span className="rounded bg-slate-800 text-white px-2.5 py-1 font-bold">SB (Company)</span>
+                <span className="text-muted-foreground font-bold">-</span>
+                <span className="rounded bg-amber-600 text-white px-2.5 py-1 font-bold">KD (Factory)</span>
+                <span className="text-muted-foreground font-bold">-</span>
+                <span className="rounded bg-violet-600 text-white px-2.5 py-1 font-bold">T (Main Part)</span>
+                <span className="text-muted-foreground font-bold">-</span>
+                <span className="rounded bg-emerald-600 text-white px-2.5 py-1 font-bold">Sh-Ro (Sub Parts)</span>
+                <span className="text-muted-foreground font-bold">-</span>
+                <span className="rounded bg-blue-600 text-white px-2.5 py-1 font-bold">01 (Seq)</span>
+                <span className="text-foreground font-sans font-semibold text-xs sm:ml-2">
+                  → Ví dụ: <strong className="font-mono text-primary font-bold">SB-KD-T-Sh-Ro-01</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* 2 Main Columns */}
+            <div className="grid min-w-0 items-stretch gap-4 md:grid-cols-2">
+              {/* Main Parts Box */}
+              <div className="min-w-0 space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
+                <div className="flex min-w-0 items-start justify-between gap-3 border-b pb-2.5">
+                  <h4 className="flex min-w-0 items-start gap-2 text-sm font-bold leading-snug text-foreground">
+                    <Cpu size={16} className="text-violet-600 shrink-0" />
+                    <span>Phân Hệ Thiết Bị Chính (Main Parts)</span>
+                  </h4>
+                  <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+                    {Object.keys(dictionary.mainParts).length} mục
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                   {Object.entries(dictionary.mainParts).map(([code, name]) => (
-                    <div key={code} className="flex items-center justify-between rounded bg-muted/40 px-2 py-1">
-                      <span className="font-mono font-bold text-primary">{code}</span>
-                      <span>{name}</span>
+                    <div
+                      key={code}
+                      className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 hover:bg-muted/50 transition-colors"
+                    >
+                      <span className="font-mono font-bold text-xs rounded bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 px-2.5 py-1 shrink-0 w-12 text-center">
+                        {code}
+                      </span>
+                      <span className="font-medium text-foreground text-xs leading-normal flex-1">{name}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3 space-y-2">
-                <h4 className="font-bold text-foreground">Bộ phận / Chi tiết (Sub Parts)</h4>
-                <div className="space-y-1 max-h-56 overflow-y-auto">
+              {/* Sub Parts Box */}
+              <div className="min-w-0 space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
+                <div className="flex min-w-0 items-start justify-between gap-3 border-b pb-2.5">
+                  <h4 className="flex min-w-0 items-start gap-2 text-sm font-bold leading-snug text-foreground">
+                    <Settings size={16} className="text-emerald-600 shrink-0" />
+                    <span>Bộ Phận & Chi Tiết Con (Sub Parts)</span>
+                  </h4>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    {Object.keys(dictionary.subParts).length} mục
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
                   {Object.entries(dictionary.subParts).map(([code, name]) => (
-                    <div key={code} className="flex items-center justify-between rounded bg-muted/40 px-2 py-1">
-                      <span className="font-mono font-bold text-emerald-600">{code}</span>
-                      <span>{name}</span>
+                    <div
+                      key={code}
+                      className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 hover:bg-muted/50 transition-colors"
+                    >
+                      <span className="font-mono font-bold text-xs rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2.5 py-1 shrink-0 w-12 text-center">
+                        {code}
+                      </span>
+                      <span className="font-medium text-foreground text-xs leading-normal flex-1">{name}</span>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="flex shrink-0 justify-end border-t bg-muted/20 px-4 py-3 sm:px-6">
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(false)}>
+              Đóng
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
